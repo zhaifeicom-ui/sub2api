@@ -59,6 +59,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	injectionProtocol := "chat_completions"
+	if !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists() {
+		injectionProtocol = "responses"
+	}
+	var err error
+	body, err = s.applyManagedPromptInjections(ctx, c, account, gjson.GetBytes(body, "model").String(), injectionProtocol, body)
+	if err != nil {
+		return nil, err
+	}
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
 

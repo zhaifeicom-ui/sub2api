@@ -302,6 +302,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				)
 			}
 		}
+		injectedPayload, injectionErr := s.applyManagedPromptInjections(ctx, c, account, originalModel, "responses", normalized)
+		if injectionErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid prompt injection payload", injectionErr)
+		}
+		normalized = injectedPayload
 		promptCacheKey := strings.TrimSpace(values[2].String())
 		previousResponseID := strings.TrimSpace(values[3].String())
 		previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)

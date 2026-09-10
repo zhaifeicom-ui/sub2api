@@ -526,6 +526,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/prompt-injections',
+    name: 'AdminPromptInjections',
+    component: () => import('@/views/admin/PromptInjectionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Prompt Injection Management',
+      titleKey: 'admin.promptInjection.title',
+      descriptionKey: 'admin.promptInjection.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),
