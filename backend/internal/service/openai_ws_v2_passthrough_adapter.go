@@ -702,6 +702,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstClientMessage = next
 	}
 	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
+	injectedFirstMessage, injectionErr := s.applyManagedPromptInjections(ctx, c, account, requestModel, "responses", firstClientMessage)
+	if injectionErr != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid prompt injection payload", injectionErr)
+	}
+	firstClientMessage = injectedFirstMessage
 	requestPreviousResponseID := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "previous_response_id").String())
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 	logOpenAIWSV2Passthrough(
@@ -1089,6 +1094,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)
+			}
+			if isResponseCreate {
+				injectionModel := requestModelForThisFrame
+				if injectionModel == "" {
+					injectionModel = model
+				}
+				injectedPayload, injectionErr := s.applyManagedPromptInjections(ctx, c, account, injectionModel, "responses", payload)
+				if injectionErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid prompt injection payload", injectionErr)
+				}
+				payload = injectedPayload
 			}
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）

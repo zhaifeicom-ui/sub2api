@@ -76,6 +76,9 @@ func RegisterAdminRoutes(
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
+		// 提示词注入管理
+		registerPromptInjectionRoutes(admin, h)
+
 		// 数据管理
 		registerDataManagementRoutes(admin, h, stepUpAuth)
 
@@ -130,6 +133,14 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerPromptInjectionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	promptInjections := admin.Group("/prompt-injections")
+	{
+		promptInjections.GET("", h.Admin.Setting.GetPromptInjections)
+		promptInjections.PUT("", h.Admin.Setting.UpdatePromptInjections)
 	}
 }
 

@@ -21,6 +21,11 @@ import (
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	var injectionErr error
+	body, injectionErr = s.applyManagedPromptInjections(ctx, c, account, gjson.GetBytes(body, "model").String(), "responses", body)
+	if injectionErr != nil {
+		return nil, injectionErr
+	}
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
