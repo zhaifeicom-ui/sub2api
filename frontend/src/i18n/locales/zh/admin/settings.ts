@@ -713,6 +713,8 @@ export default {
         visibility: '可见角色',
         visibilityUser: '普通用户',
         visibilityAdmin: '管理员',
+        forwardUserContext: '向页面传递用户登录信息',
+        forwardUserContextHint: '仅对你完全信任的页面开启；会在 URL 中携带用户 ID 和登录 Token。第三方网站必须关闭。',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',

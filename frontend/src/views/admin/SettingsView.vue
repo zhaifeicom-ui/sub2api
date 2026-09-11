@@ -6928,6 +6928,14 @@
                       @update:model-value="(v: string) => (item.icon_svg = v)"
                     />
                   </div>
+
+                  <div class="sm:col-span-2 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/20">
+                    <div class="pr-4">
+                      <p class="text-xs font-medium text-amber-900 dark:text-amber-100">{{ t('admin.settings.customMenu.forwardUserContext') }}</p>
+                      <p class="mt-0.5 text-xs text-amber-700 dark:text-amber-300">{{ t('admin.settings.customMenu.forwardUserContextHint') }}</p>
+                    </div>
+                    <Toggle v-model="item.forward_user_context" />
+                  </div>
                 </div>
               </div>
 
@@ -9687,6 +9695,7 @@ type SettingsForm = Omit<
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
   | "openai_oauth_scheduling_rate_multiplier"
+  | "custom_menu_items"
 > & {
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
@@ -9711,6 +9720,16 @@ type SettingsForm = Omit<
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
+  custom_menu_items: Array<{
+    id: string;
+    label: string;
+    icon_svg: string;
+    url: string;
+    visibility: "user" | "admin";
+    sort_order: number;
+    forward_user_context: boolean;
+    hide_open_button?: boolean;
+  }>;
   openai_low_upstream_rate_priority_enabled: boolean;
   openai_oauth_scheduling_rate_multiplier: number | "" | null;
   openai_advanced_scheduler_enabled: boolean;
@@ -9812,6 +9831,7 @@ const form = reactive<SettingsForm>({
     url: string;
     visibility: "user" | "admin";
     sort_order: number;
+    forward_user_context: boolean;
     hide_open_button?: boolean;
   }>,
   custom_endpoints: [] as Array<{
@@ -10793,6 +10813,7 @@ function addMenuItem() {
     url: "",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
+    forward_user_context: false,
   });
 }
 
@@ -11003,6 +11024,10 @@ async function loadSettings() {
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
     }
+    form.custom_menu_items = (form.custom_menu_items || []).map((item) => ({
+      ...item,
+      forward_user_context: item.forward_user_context === true,
+    }));
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =

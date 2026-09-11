@@ -17,6 +17,7 @@ type CustomMenuItem struct {
 	Visibility     string `json:"visibility"` // "user" or "admin"
 	SortOrder      int    `json:"sort_order"`
 	HideOpenButton bool   `json:"hide_open_button,omitempty"`
+	ForwardUserContext bool   `json:"forward_user_context,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.

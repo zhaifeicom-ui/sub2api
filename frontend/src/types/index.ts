@@ -194,6 +194,8 @@ export interface CustomMenuItem {
   hide_open_button?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
+  /** Forward the current Sub2API user ID and auth token to the iframe URL. Off by default. */
+  forward_user_context?: boolean
 }
 
 export interface CustomEndpoint {
