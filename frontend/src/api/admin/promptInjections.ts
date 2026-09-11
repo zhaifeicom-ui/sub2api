@@ -10,6 +10,7 @@ export interface PromptInjectionRule {
   enabled: boolean
   scope: PromptInjectionScope
   target_id: number
+  group_ids: number[]
   role: PromptInjectionRole
   position: PromptInjectionPosition
   content: string
