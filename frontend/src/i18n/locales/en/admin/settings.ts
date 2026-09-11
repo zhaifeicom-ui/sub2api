@@ -682,6 +682,8 @@ export default {
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
+        forwardUserContext: 'Forward user sign-in context',
+        forwardUserContextHint: 'Enable only for fully trusted pages. User ID and auth token are added to the URL; keep this off for third-party sites.',
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',
