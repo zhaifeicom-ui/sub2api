@@ -23,10 +23,13 @@ type PromptInjectionConfig struct {
 }
 
 type PromptInjectionRule struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Enabled  bool     `json:"enabled"`
-	Scope    string   `json:"scope"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Scope   string `json:"scope"`
+	// GroupIDs allows one rule to target several groups. TargetID is kept for
+	// backwards compatibility with rules created by the first version.
+	GroupIDs []int64  `json:"group_ids,omitempty"`
 	TargetID int64    `json:"target_id"`
 	Role     string   `json:"role"`
 	Position string   `json:"position"`
@@ -69,7 +72,29 @@ func normalizePromptInjectionConfig(config PromptInjectionConfig) (PromptInjecti
 		if rule.Scope != "group" && rule.Scope != "account" {
 			return config, fmt.Errorf("规则 %q 的作用范围无效", rule.Name)
 		}
-		if rule.TargetID <= 0 {
+		if rule.Scope == "group" {
+			if len(rule.GroupIDs) == 0 && rule.TargetID > 0 {
+				rule.GroupIDs = []int64{rule.TargetID}
+			}
+			uniqueGroups := make([]int64, 0, len(rule.GroupIDs))
+			seenGroups := make(map[int64]struct{}, len(rule.GroupIDs))
+			for _, groupID := range rule.GroupIDs {
+				if groupID <= 0 {
+					continue
+				}
+				if _, ok := seenGroups[groupID]; ok {
+					continue
+				}
+				seenGroups[groupID] = struct{}{}
+				uniqueGroups = append(uniqueGroups, groupID)
+			}
+			if len(uniqueGroups) == 0 {
+				return config, fmt.Errorf("规则 %q 未选择分组", rule.Name)
+			}
+			rule.GroupIDs = uniqueGroups
+			// Keep the first target populated for older readers and old clients.
+			rule.TargetID = rule.GroupIDs[0]
+		} else if rule.TargetID <= 0 {
 			return config, fmt.Errorf("规则 %q 的目标无效", rule.Name)
 		}
 		if rule.Role != "system" && rule.Role != "developer" && rule.Role != "user" {
@@ -169,13 +194,27 @@ func matchingPromptInjectionRules(config PromptInjectionConfig, groupID *int64, 
 		if !rule.Enabled {
 			continue
 		}
-		targetMatched := rule.Scope == "account" && rule.TargetID == accountID
-		if rule.Scope == "group" && groupID != nil && rule.TargetID == *groupID {
-			targetMatched = true
-		}
-		if !targetMatched {
+		if rule.Scope == "group" {
+			targetMatched := false
+			groupIDs := rule.GroupIDs
+			if len(groupIDs) == 0 && rule.TargetID > 0 {
+				groupIDs = []int64{rule.TargetID}
+			}
+			for _, targetGroupID := range groupIDs {
+				if groupID != nil && targetGroupID == *groupID {
+					targetMatched = true
+					break
+				}
+			}
+			if targetMatched {
+				matched = append(matched, rule)
+			}
 			continue
 		}
+		if rule.TargetID != accountID {
+			continue
+		}
+		// Account-scoped rules remain compatible with the original model filter.
 		modelMatched := len(rule.Models) == 0
 		for _, pattern := range rule.Models {
 			if wildcardModelMatch(pattern, model) {

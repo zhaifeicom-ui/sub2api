@@ -20,6 +20,17 @@ func TestMatchingPromptInjectionRules(t *testing.T) {
 	require.Equal(t, "account", got[1].ID)
 }
 
+func TestMatchingPromptInjectionRulesSupportsMultipleGroups(t *testing.T) {
+	groupID := int64(12)
+	config := PromptInjectionConfig{Rules: []PromptInjectionRule{
+		{ID: "multi", Enabled: true, Scope: "group", GroupIDs: []int64{7, 12}, TargetID: 7},
+	}}
+
+	got := matchingPromptInjectionRules(config, &groupID, 1, "any-model")
+	require.Len(t, got, 1)
+	require.Equal(t, "multi", got[0].ID)
+}
+
 func TestApplyPromptInjectionsChatPositions(t *testing.T) {
 	body := []byte(`{"model":"gpt-5","messages":[{"role":"system","content":"old"},{"role":"user","content":"hello"},{"role":"assistant","content":"hi"}]}`)
 	rules := []PromptInjectionRule{
