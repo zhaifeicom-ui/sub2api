@@ -286,6 +286,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	clientOutputStarted := false
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+	placeholderFilter := &chatToolPlaceholderStreamFilter{}
 	var terminal openAIRawStreamTerminalState
 
 	writeLine := func(line string) {
@@ -341,16 +342,22 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
 		line = stripEmptyChatToolCallIdentityFromSSELine(line)
 
-		writeLine(line)
-		if line == "" {
+		filteredLines := placeholderFilter.Process(line)
+		for _, filteredLine := range filteredLines {
+			writeLine(filteredLine)
+			if filteredLine == "" {
+				if !clientDisconnected && clientOutputStarted {
+					c.Writer.Flush()
+				}
+				continue
+			}
 			if !clientDisconnected && clientOutputStarted {
 				c.Writer.Flush()
 			}
-			continue
 		}
-		if !clientDisconnected && clientOutputStarted {
-			c.Writer.Flush()
-		}
+	}
+	for _, filteredLine := range placeholderFilter.Flush() {
+		writeLine(filteredLine)
 	}
 
 	resultWithUsage := func() *OpenAIForwardResult {
@@ -510,6 +517,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}
 	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
+	respBody, _ = stripPlaceholderContentFromToolResponse(respBody)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
