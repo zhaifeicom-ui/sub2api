@@ -8,6 +8,7 @@ import audit from './audit'
 import promptAudit from './promptAudit'
 import plugins from './plugins'
 import promptInjection from './promptInjection'
+import modelPricing from './modelPricing'
 
 export default {
   ...overview,
@@ -20,4 +21,5 @@ export default {
   ...promptAudit,
   ...plugins,
   ...promptInjection,
+  ...modelPricing,
 }
