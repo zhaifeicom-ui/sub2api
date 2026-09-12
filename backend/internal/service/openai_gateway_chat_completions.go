@@ -63,10 +63,33 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists() {
 		injectionProtocol = "responses"
 	}
+	var originalToolSequence []chatToolSequenceEvent
+	if injectionProtocol == "chat_completions" {
+		var sequenceErr error
+		originalToolSequence, sequenceErr = validateChatToolSequence(body)
+		if sequenceErr != nil {
+			message := "Invalid tool-call message sequence: " + sequenceErr.Error()
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", message)
+			return nil, fmt.Errorf("validate chat tool sequence: %w", sequenceErr)
+		}
+	}
 	var err error
 	body, err = s.applyManagedPromptInjections(ctx, c, account, gjson.GetBytes(body, "model").String(), injectionProtocol, body)
 	if err != nil {
 		return nil, err
+	}
+	if injectionProtocol == "chat_completions" {
+		injectedToolSequence, sequenceErr := validateChatToolSequence(body)
+		if sequenceErr != nil || !sameChatToolSequence(originalToolSequence, injectedToolSequence) {
+			logger.L().Error("prompt injection changed chat tool-call sequence",
+				zap.Int64("account_id", account.ID),
+				zap.Int("tool_events_before", len(originalToolSequence)),
+				zap.Int("tool_events_after", len(injectedToolSequence)),
+				zap.Error(sequenceErr),
+			)
+			writeChatCompletionsError(c, http.StatusInternalServerError, "api_error", "Prompt injection safety check failed")
+			return nil, fmt.Errorf("prompt injection changed tool-call sequence")
+		}
 	}
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
