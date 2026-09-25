@@ -1686,6 +1686,86 @@ func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(
 	require.Equal(t, expectedCost.ActualCost, userRepo.lastAmount)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_GroupAliasPriceOverridesMappedModelPrice(t *testing.T) {
+	tests := []struct {
+		name              string
+		includeAliasPrice bool
+		wantBillingModel  string
+	}{
+		{
+			name:              "explicit alias price wins",
+			includeAliasPrice: true,
+			wantBillingModel:  "cloud-v4-pro",
+		},
+		{
+			name:              "missing alias price falls back to mapped model",
+			includeAliasPrice: false,
+			wantBillingModel:  "deepseek-v4-pro",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			userRepo := &openAIRecordUsageUserRepoStub{}
+			subRepo := &openAIRecordUsageSubRepoStub{}
+			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+			group := &Group{
+				ID:                        57,
+				LongContextPricingEnabled: false,
+				ModelPricing: []ChannelModelPricing{{
+					Models:      []string{"deepseek-v4-pro"},
+					BillingMode: BillingModeToken,
+					InputPrice:  floatPtr(4.5e-6),
+					OutputPrice: floatPtr(13.5e-6),
+				}},
+			}
+			if tt.includeAliasPrice {
+				group.ModelPricing = append(group.ModelPricing, ChannelModelPricing{
+					Models:      []string{"cloud-v4-pro"},
+					BillingMode: BillingModeToken,
+					InputPrice:  floatPtr(1.26e-6),
+					OutputPrice: floatPtr(3.78e-6),
+				})
+			}
+			apiKey := &APIKey{ID: 10, Group: group}
+			usage := OpenAIUsage{InputTokens: 100_000, OutputTokens: 100}
+			pricingAt := time.Date(2026, time.September, 26, 12, 0, 0, 0, time.FixedZone("Asia/Shanghai", 8*60*60))
+			tokens := UsageTokens{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens}
+			expectedCost, err := svc.calculateOpenAIRecordUsageTokenCost(
+				context.Background(), apiKey, tt.wantBillingModel, 1.1, pricingAt, tokens, "", nil,
+			)
+			require.NoError(t, err)
+
+			err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID:     "resp_group_alias_pricing_" + tt.wantBillingModel,
+					Model:         "cloud-v4-pro",
+					BillingModel:  "deepseek-v4-pro",
+					UpstreamModel: "deepseek-v4-pro",
+					Usage:         usage,
+					Duration:      time.Second,
+				},
+				APIKey:    apiKey,
+				User:      &User{ID: 20},
+				Account:   &Account{ID: 30, Platform: PlatformDeepseek},
+				PricingAt: pricingAt,
+				ChannelUsageFields: ChannelUsageFields{
+					OriginalModel:      "cloud-v4-pro",
+					ChannelMappedModel: "cloud-v4-pro",
+					BillingModelSource: BillingModelSourceUpstream,
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+			require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingModelWhenUnmapped(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

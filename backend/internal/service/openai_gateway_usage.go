@@ -132,6 +132,37 @@ func openAIUsagePricingAt(input *OpenAIRecordUsageInput) time.Time {
 	return timezone.Now()
 }
 
+// prioritizeExplicitGroupRequestedModelPrice keeps account model mapping from
+// hiding an explicit group price configured for the public/requested model.
+// The mapped model remains the fallback when the group has no matching rule
+// for the requested name.
+func prioritizeExplicitGroupRequestedModelPrice(candidates []string, requestedModel string, group *Group) []string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" || group == nil || matchGroupModelPricing(group, requestedModel) == nil {
+		return candidates
+	}
+
+	requestedIndex := -1
+	for i, candidate := range candidates {
+		if strings.EqualFold(strings.TrimSpace(candidate), requestedModel) {
+			requestedIndex = i
+			break
+		}
+	}
+	if requestedIndex <= 0 {
+		return candidates
+	}
+
+	ordered := make([]string, 0, len(candidates))
+	ordered = append(ordered, candidates[requestedIndex])
+	for i, candidate := range candidates {
+		if i != requestedIndex {
+			ordered = append(ordered, candidate)
+		}
+	}
+	return ordered
+}
+
 func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTier string) bool {
 	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.FreeOpenAIFast {
 		return false
@@ -229,6 +260,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamModel,
 		result.Model,
 	)
+	requestedPricingModel := strings.TrimSpace(input.OriginalModel)
+	if requestedPricingModel == "" {
+		requestedPricingModel = strings.TrimSpace(result.Model)
+	}
+	channelMappingOverridesRequestedModel := input.BillingModelSource == BillingModelSourceChannelMapped &&
+		strings.TrimSpace(input.ChannelMappedModel) != "" &&
+		!strings.EqualFold(strings.TrimSpace(input.ChannelMappedModel), requestedPricingModel)
+	if input.BillingModelSource != BillingModelSourceResponse && !channelMappingOverridesRequestedModel {
+		billingModels = prioritizeExplicitGroupRequestedModelPrice(billingModels, requestedPricingModel, apiKey.Group)
+		billingModel = firstUsageBillingModel(billingModels)
+	}
 	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
 	serviceTier := ""
 	if result.ServiceTier != nil {

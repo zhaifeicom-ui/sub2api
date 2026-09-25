@@ -1324,10 +1324,11 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 	// DeepSeek 模型默认价卡按官方峰谷口径调整：高峰时段（01:00–04:00 与
 	// 06:00–10:00 UTC，仅工作日；北京时间周末全天低谷）按 2× 低谷价计费。
-	// 仅作用于默认价卡（Source=LiteLLM，无分组/渠道自定义定价）——分组/渠道
-	// 自定义定价保持运营者语义，不叠加。PricingAt 为零值时回退当前时刻。
+	// 仅作用于默认价卡和分组模型定价（分组定价的基础价格仍由管理员控制）；
+	// 渠道定价保持原有语义，不叠加。这样把 DS 低谷价填入分组后，官方峰谷
+	// 规则不会因覆盖了默认价卡而失效。PricingAt 为零值时回退当前时刻。
 	// 先克隆再乘，避免污染共享 fallbackPrices 指针。
-	if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
+	if (resolved.Source == PricingSourceLiteLLM || resolved.Source == PricingSourceGroup) && isDeepSeekModel(input.Model) {
 		pricingAt := input.PricingAt
 		if pricingAt.IsZero() {
 			pricingAt = timezone.Now()
@@ -1610,7 +1611,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	// 档位判定：含 "deepseek-v4-pro" 的版本化名称（如 deepseek-v4-pro-0813）归 pro 档，
 	// 其余 deepseek-*（含已停服的 chat/reasoner 与未知型号）统一归 flash 档。
 	// 高峰时段倍率不在本函数处理，由 calculateTokenCost 按 deepseekPeakMultiplierAt
-	// 对默认价卡另行叠加（分组/渠道自定义定价不叠加）。
+	// 对默认价卡和分组定价另行叠加（渠道自定义定价不叠加）。
 	if forceDeepSeekRates && isDeepSeekModel(model) {
 		cloned := *pricing
 		if strings.Contains(strings.ToLower(strings.TrimSpace(model)), "deepseek-v4-pro") {

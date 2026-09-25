@@ -108,12 +108,17 @@ export async function getById(id: number): Promise<AdminGroup> {
  */
 export async function getModelsListCandidates(
   id: number,
-  platform?: GroupPlatform
+  platform?: GroupPlatform,
+  options: { pricingOnly?: boolean } = {},
 ): Promise<string[]> {
+  const params = {
+    ...(platform ? { platform } : {}),
+    ...(options.pricingOnly ? { pricing: '1' } : {}),
+  }
   const { data } = await apiClient.get<{ models: string[] }>(
     `/admin/groups/${id}/models-list-candidates`,
     {
-      params: platform ? { platform } : undefined
+      params: Object.keys(params).length > 0 ? params : undefined
     }
   )
   return data.models || []

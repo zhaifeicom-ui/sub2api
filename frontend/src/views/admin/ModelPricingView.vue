@@ -219,10 +219,12 @@
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label class="input-label">{{ t('admin.modelPricing.editorScope') }}</label>
-            <Select :model-value="editorScope" :options="editorScopeOptions" @update:model-value="changeEditorScope" />
+            <Select :model-value="editorScope" :options="editorScopeOptions" :disabled="editorScopeLocked" @update:model-value="changeEditorScope" />
           </div>
           <div>
-            <label class="input-label">{{ t('admin.modelPricing.editorOwner') }}</label>
+            <label class="input-label">
+              {{ editorScope === 'group' ? t('admin.modelPricing.editorGroup') : t('admin.modelPricing.editorChannel') }}
+            </label>
             <Select :model-value="editorOwnerId" :options="editorOwnerOptions" searchable @update:model-value="changeEditorOwner" />
           </div>
           <div>
@@ -244,14 +246,31 @@
         </div>
 
         <div v-if="editorOwnerId" class="space-y-3">
+          <div
+            v-if="editorScope === 'group'"
+            class="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm dark:border-purple-900/50 dark:bg-purple-950/20"
+          >
+            <Icon
+              :name="editorModelsLoading ? 'refresh' : 'infoCircle'"
+              size="md"
+              :class="editorModelsLoading ? 'animate-spin text-purple-600' : 'text-purple-600 dark:text-purple-400'"
+            />
+            <span class="text-purple-800 dark:text-purple-200">
+              {{ editorModelsLoading
+                ? t('admin.modelPricing.loadingGroupModels')
+                : t('admin.modelPricing.groupModelsLoaded', { count: editorEntries.length }) }}
+            </span>
+          </div>
+
           <PricingEntryCard
             v-for="(entry, index) in editorEntries"
-            :key="`${editorPlatform}-${index}`"
+            :key="`${editorPlatform}-${entry.models.join('|')}-${index}`"
             :entry="entry"
             :platform="editorPlatform"
             :hide-token-intervals="editorScope === 'group'"
             :enable-time-pricing="editorScope === 'channel'"
             enable-tier-multipliers
+            :initial-collapsed="editorScope === 'group' ? false : undefined"
             @update="editorEntries.splice(index, 1, $event)"
             @remove="editorEntries.splice(index, 1)"
           />
@@ -271,7 +290,7 @@
         <button type="button" class="btn btn-secondary" :disabled="saving" @click="closeEditor">
           {{ t('common.cancel') }}
         </button>
-        <button type="button" class="btn btn-primary" :disabled="saving || !editorOwnerId" @click="saveEditor">
+        <button type="button" class="btn btn-primary" :disabled="saving || editorModelsLoading || !editorOwnerId" @click="saveEditor">
           <Icon v-if="saving" name="refresh" size="sm" class="mr-2 animate-spin" />
           {{ saving ? t('common.saving') : t('admin.modelPricing.saveRules', { count: editorEntries.length }) }}
         </button>
@@ -312,6 +331,7 @@ import {
   formatTokenPrice,
   pricingEntryFromAPI,
   pricingEntryToAPI,
+  pricingEntryWithDefaultPricing,
   pricingPlatforms,
   replacePlatformPricing,
 } from './modelPricing'
@@ -345,10 +365,15 @@ const page = ref(1)
 const pageSize = ref(getPersistedPageSize())
 
 const editorOpen = ref(false)
-const editorScope = ref<EditablePricingScope>('channel')
+// Group pricing is the primary workflow. Channel rows can still be edited
+// from the table, but a fresh rule starts at the group level.
+const editorScope = ref<EditablePricingScope>('group')
+const editorScopeLocked = ref(false)
 const editorOwnerId = ref<number | string>('')
 const editorPlatform = ref<string>('openai')
 const editorEntries = ref<PricingFormEntry[]>([])
+const editorModelsLoading = ref(false)
+const groupModelsRequestId = ref(0)
 
 const columns = computed<Column[]>(() => [
   { key: 'scope', label: t('admin.modelPricing.columns.scope'), sortable: false },
@@ -551,49 +576,131 @@ function syncEditorEntries() {
     .map(pricingEntryFromAPI)
 }
 
-function openCreateEditor() {
-  const requestedScope: EditablePricingScope = activeScope.value === 'group' ? 'group' : 'channel'
-  const owners = requestedScope === 'channel' ? channels.value : groups.value
+function modelPatternMatches(pattern: string, model: string): boolean {
+  const escaped = pattern.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*')
+  if (!escaped) return false
+  try {
+    return new RegExp(`^${escaped}$`, 'i').test(model.trim())
+  } catch {
+    return pattern.trim().toLowerCase() === model.trim().toLowerCase()
+  }
+}
+
+function modelCoveredByEntries(model: string, entries: PricingFormEntry[]): boolean {
+  return entries.some(entry => entry.models.some(pattern => modelPatternMatches(pattern, model)))
+}
+
+function uniqueModels(models: string[]): string[] {
+  const seen = new Set<string>()
+  return models
+    .map(model => model.trim())
+    .filter(model => {
+      const normalized = model.toLowerCase()
+      if (!model || seen.has(normalized)) return false
+      seen.add(normalized)
+      return true
+    })
+}
+
+/**
+ * Add one editable entry per model that the selected group can serve. Existing
+ * entries are retained verbatim, so opening this editor never changes saved
+ * pricing until the administrator explicitly presses Save.
+ */
+async function loadGroupModelEntries() {
+  const ownerId = Number(editorOwnerId.value)
+  const group = selectedEditorGroup.value
+  if (!ownerId || !group || editorScope.value !== 'group') return
+
+  const requestId = ++groupModelsRequestId.value
+  editorModelsLoading.value = true
+  try {
+    const candidates = uniqueModels(await adminAPI.groups.getModelsListCandidates(ownerId, group.platform, { pricingOnly: true }))
+    if (requestId !== groupModelsRequestId.value) return
+
+    const existingEntries = [...editorEntries.value]
+    const missingModels = candidates.filter(model => !modelCoveredByEntries(model, existingEntries))
+    const generatedEntries = await Promise.all(missingModels.map(async model => {
+      const entry = createEmptyPricingEntry()
+      entry.models = [model]
+      try {
+        const defaults = await adminAPI.channels.getModelDefaultPricing(model)
+        return pricingEntryWithDefaultPricing(entry, defaults)
+      } catch {
+        // A missing catalog price is valid: leave the fields blank so the
+        // administrator can set a custom override instead of blocking the UI.
+        return entry
+      }
+    }))
+    if (requestId !== groupModelsRequestId.value) return
+    editorEntries.value = [...existingEntries, ...generatedEntries]
+  } catch (error: unknown) {
+    if (requestId !== groupModelsRequestId.value) return
+    appStore.showError(extractApiErrorMessage(error, t('admin.modelPricing.groupModelsLoadFailed')))
+  } finally {
+    if (requestId === groupModelsRequestId.value) editorModelsLoading.value = false
+  }
+}
+
+async function openCreateEditor() {
+  // New pricing is intentionally group-scoped. Existing channel rules remain
+  // editable from their table row, but the create flow no longer asks the
+  // administrator to choose between an unrelated channel and a group.
+  const requestedScope: EditablePricingScope = 'group'
+  const owners = groups.value
   if (owners.length === 0) {
-    appStore.showError(t('admin.modelPricing.noOwners'))
+    appStore.showError(t('admin.modelPricing.noGroups'))
     return
   }
   editorScope.value = requestedScope
+  editorScopeLocked.value = true
   editorOwnerId.value = owners[0].id
   editorPlatform.value = defaultEditorPlatform(requestedScope, editorOwnerId.value)
   syncEditorEntries()
-  editorEntries.value.push(createEmptyPricingEntry())
   editorOpen.value = true
+  await loadGroupModelEntries()
 }
 
-function openRowEditor(row: PricingRow) {
+async function openRowEditor(row: PricingRow) {
   editorScope.value = row.scope
+  editorScopeLocked.value = false
   editorOwnerId.value = row.ownerId
   editorPlatform.value = row.platform
   syncEditorEntries()
   editorOpen.value = true
+  if (row.scope === 'group') await loadGroupModelEntries()
 }
 
 function closeEditor() {
   if (saving.value) return
+  groupModelsRequestId.value += 1
+  editorModelsLoading.value = false
   editorOpen.value = false
+  editorScopeLocked.value = false
   editorEntries.value = []
 }
 
-function changeEditorScope(value: string | number | boolean | null) {
+async function changeEditorScope(value: string | number | boolean | null) {
+  if (editorScopeLocked.value) return
   if (value !== 'channel' && value !== 'group') return
+  groupModelsRequestId.value += 1
+  editorModelsLoading.value = false
   editorScope.value = value
   const owners = value === 'channel' ? channels.value : groups.value
   editorOwnerId.value = owners[0]?.id ?? ''
   editorPlatform.value = defaultEditorPlatform(value, editorOwnerId.value)
   syncEditorEntries()
+  if (value === 'group' && editorOwnerId.value) await loadGroupModelEntries()
 }
 
-function changeEditorOwner(value: string | number | boolean | null) {
+async function changeEditorOwner(value: string | number | boolean | null) {
   if (typeof value !== 'number' && typeof value !== 'string') return
+  groupModelsRequestId.value += 1
+  editorModelsLoading.value = false
   editorOwnerId.value = value
   editorPlatform.value = defaultEditorPlatform(editorScope.value, value)
   syncEditorEntries()
+  if (editorScope.value === 'group') await loadGroupModelEntries()
 }
 
 function changeEditorPlatform(value: string | number | boolean | null) {
@@ -603,6 +710,10 @@ function changeEditorPlatform(value: string | number | boolean | null) {
 }
 
 function validateEditor(): boolean {
+  if (editorEntries.value.length === 0) {
+    appStore.showError(t('admin.modelPricing.validation.entriesRequired'))
+    return false
+  }
   for (const entry of editorEntries.value) {
     if (entry.models.length === 0) {
       appStore.showError(t('admin.modelPricing.validation.modelsRequired'))

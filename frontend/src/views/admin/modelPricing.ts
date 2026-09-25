@@ -1,4 +1,4 @@
-import type { ChannelModelPricing } from '@/api/admin/channels'
+import type { ChannelModelPricing, ModelDefaultPricing } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import {
   apiIntervalsToForm,
@@ -57,6 +57,26 @@ export function pricingEntryFromAPI(entry: ChannelModelPricing): PricingFormEntr
     per_request_price: entry.per_request_price,
     intervals: apiIntervalsToForm(entry.intervals || []),
     time_pricing: apiTimePricingToForm(entry.time_pricing),
+  }
+}
+
+/**
+ * Seed a new pricing entry with the catalog price for one model.
+ * Catalog prices are stored per token while the editor displays $/MTok.
+ */
+export function pricingEntryWithDefaultPricing(
+  entry: PricingFormEntry,
+  defaults: ModelDefaultPricing,
+): PricingFormEntry {
+  return {
+    ...entry,
+    input_price: perTokenToMTok(defaults.input_price),
+    output_price: perTokenToMTok(defaults.output_price),
+    cache_write_price: perTokenToMTok(defaults.cache_write_price),
+    cache_write_1h_price: perTokenToMTok(defaults.cache_write_1h_price),
+    cache_read_price: perTokenToMTok(defaults.cache_read_price),
+    image_input_price: perTokenToMTok(defaults.image_input_price),
+    image_output_price: perTokenToMTok(defaults.image_output_price),
   }
 }
 
