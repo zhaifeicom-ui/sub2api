@@ -1532,9 +1532,9 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 	// DeepSeek 模型默认价卡按官方峰谷口径调整：高峰时段（01:00–04:00 与
 	// 06:00–10:00 UTC，仅工作日；北京时间周末全天低谷）按 2× 低谷价计费。
-	// 仅作用于默认价卡（Source=LiteLLM，无分组/渠道自定义定价）——分组/渠道
-	// 自定义定价保持运营者语义，不叠加。先克隆再乘，避免污染共享 fallbackPrices 指针。
-	if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
+	// 默认价卡和分组定价应用 DeepSeek 峰谷倍率；分组基础价格仍由管理员控制。
+	// 渠道自定义定价不叠加。pricingAt 已在上方按请求时点或当前时刻归一化。
+	if (resolved.Source == PricingSourceLiteLLM || resolved.Source == PricingSourceGroup) && isDeepSeekModel(input.Model) {
 		if mult := deepseekPeakMultiplierAt(pricingAt); mult > 1 {
 			cloned := *pricing
 			cloned.InputPricePerToken *= mult
@@ -1822,7 +1822,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	// 2026-09-14 04:00 UTC 起上游把 pro 请求路由到 V4.1-Flash，pro 档改按
 	// Flash 三档价计费；历史时点（早于切换时刻）仍按 Pro 价。
 	// 高峰时段倍率不在本函数处理，由 calculateTokenCost 按 deepseekPeakMultiplierAt
-	// 对默认价卡另行叠加（分组/渠道自定义定价不叠加）。
+	// 对默认价卡和分组定价另行叠加（渠道自定义定价不叠加）。
 	if forceDeepSeekRates && isDeepSeekModel(model) {
 		cloned := *pricing
 		if isDeepSeekProModel(model) && !deepseekProBilledAsFlash(pricingAt) {

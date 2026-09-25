@@ -320,6 +320,8 @@ const props = withDefaults(defineProps<{
   hideTokenIntervals?: boolean
   enableTimePricing?: boolean
   enableTierMultipliers?: boolean
+  /** Initial visual state; existing callers keep the legacy collapsed default. */
+  initialCollapsed?: boolean
 }>(), {
   hideTokenIntervals: false,
   enableTimePricing: false,
@@ -331,8 +333,9 @@ const emit = defineEmits<{
   remove: []
 }>()
 
-// Collapse state: entries with existing models default to collapsed
-const collapsed = ref(props.entry.models.length > 0)
+// Existing callers keep the compact collapsed card; batch group pricing can
+// explicitly open every model so its catalog defaults are immediately visible.
+const collapsed = ref(props.initialCollapsed ?? props.entry.models.length > 0)
 
 const billingModeOptions = computed(() => [
   { value: 'token', label: t('admin.channels.billingMode.token') },

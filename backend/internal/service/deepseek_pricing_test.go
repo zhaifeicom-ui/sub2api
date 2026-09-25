@@ -153,7 +153,7 @@ func TestCalculateCostUnified_DeepseekVersionedNamePeakMultiplier(t *testing.T) 
 	require.InDelta(t, offPeakTotal*2, peak.TotalCost, 1e-10)
 }
 
-func TestCalculateCostUnified_DeepseekGroupPricingNotScaledByPeak(t *testing.T) {
+func TestCalculateCostUnified_DeepseekGroupPricingUsesPeakMultiplier(t *testing.T) {
 	bs := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, bs)
 
@@ -173,18 +173,22 @@ func TestCalculateCostUnified_DeepseekGroupPricingNotScaledByPeak(t *testing.T) 
 	// 分组自定义价：1000*1e-6 + 500*2e-6 + 1000*3e-9（缓存读沿用官方 flash 价）
 	groupTotal := 1000*1e-6 + 500*2e-6 + 1000*3e-9
 
-	for _, pricingAt := range []time.Time{
-		time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC), // 低谷
-		time.Date(2026, 8, 24, 2, 0, 0, 0, time.UTC),  // 高峰
-	} {
-		cost, err := bs.CalculateCostUnified(CostInput{
-			Ctx: context.Background(), Model: "deepseek-v4-flash", Group: group,
-			Tokens: tokens, RateMultiplier: 1.0, Resolver: resolver, PricingAt: pricingAt,
-		})
-		require.NoError(t, err)
-		require.InDelta(t, groupTotal, cost.TotalCost, 1e-10,
-			"分组自定义定价不应叠加官方峰谷倍率（pricingAt=%v）", pricingAt)
-	}
+	offPeak, err := bs.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "deepseek-v4-flash", Group: group,
+		Tokens: tokens, RateMultiplier: 1.0, Resolver: resolver,
+		PricingAt: time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC), // 低谷
+	})
+	require.NoError(t, err)
+	require.InDelta(t, groupTotal, offPeak.TotalCost, 1e-10)
+
+	peak, err := bs.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "deepseek-v4-flash", Group: group,
+		Tokens: tokens, RateMultiplier: 1.0, Resolver: resolver,
+		PricingAt: time.Date(2026, 8, 24, 2, 0, 0, 0, time.UTC), // 高峰
+	})
+	require.NoError(t, err)
+	require.InDelta(t, groupTotal*2, peak.TotalCost, 1e-10,
+		"分组自定义定价应叠加官方峰谷倍率")
 }
 
 func TestCalculateCostUnified_NonDeepseekDefaultCardNotScaledByPeak(t *testing.T) {

@@ -617,11 +617,13 @@ func (h *GroupHandler) GetGroupModelAllowlistCandidates(c *gin.Context) {
 		return
 	}
 
-	models, err := h.adminService.GetGroupModelsListCandidates(
-		c.Request.Context(),
-		groupID,
-		c.Query("platform"),
-	)
+	platform := c.Query("platform")
+	var models []string
+	if c.Query("pricing") == "1" || strings.EqualFold(c.Query("pricing"), "true") {
+		models, err = h.adminService.GetGroupPricingModelCandidates(c.Request.Context(), groupID, platform)
+	} else {
+		models, err = h.adminService.GetGroupModelsListCandidates(c.Request.Context(), groupID, platform)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

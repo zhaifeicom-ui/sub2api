@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,6 +131,110 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		}
 	}
 	return candidates, nil
+}
+
+// GetGroupPricingModelCandidates is the strict counterpart used by the
+// pricing editor. A non-empty account model_mapping is the account's explicit
+// scheduling whitelist (the map keys are the public model IDs). An empty
+// mapping means the account allows the platform's built-in models, so only
+// those known defaults are added. This keeps unrelated platform defaults out
+// of a group's pricing form while preserving the existing /v1/models helper's
+// broader backwards-compatible semantics.
+func (s *adminServiceImpl) GetGroupPricingModelCandidates(ctx context.Context, id int64, platform string) ([]string, error) {
+	platform = strings.TrimSpace(platform)
+	if id <= 0 || s.accountRepo == nil {
+		return []string{}, nil
+	}
+	if platform == "" {
+		group, err := s.groupRepo.GetByIDLite(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		platform = group.Platform
+	}
+
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{})
+	models := make([]string, 0)
+	add := func(model string) {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			return
+		}
+		key := strings.ToLower(model)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		models = append(models, model)
+	}
+	for _, acc := range accounts {
+		accountPlatform := acc.Platform
+		if platform == PlatformComposite {
+			if !isConcreteRequestPlatform(accountPlatform) {
+				continue
+			}
+		} else if accountPlatform != platform {
+			continue
+		}
+
+		mapping := acc.GetModelMapping()
+		// Passthrough accounts deliberately ignore stale model_mapping values;
+		// mirror Account.IsModelSupported and the public models endpoint here.
+		if accountPlatform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
+			mapping = nil
+		}
+		// GetModelMapping may synthesize a provider default map (Grok,
+		// Antigravity, Gemini Google One). That is not an explicit whitelist in
+		// the account form, so use the provider's published default list instead.
+		explicitMapping := accountHasExplicitModelMapping(acc)
+		if explicitMapping && len(mapping) > 0 {
+			for model := range mapping {
+				add(model)
+			}
+			continue
+		}
+		// Empty mapping is the documented "allow all" mode. The editor cannot
+		// enumerate arbitrary upstream aliases, so expose the provider's known
+		// defaults (the same finite set used by the public models endpoint).
+		for _, model := range accountDefaultModelIDs(acc, accountPlatform) {
+			if acc.IsModelSupported(model) {
+				add(model)
+			}
+		}
+	}
+	sort.SliceStable(models, func(i, j int) bool {
+		return strings.ToLower(models[i]) < strings.ToLower(models[j])
+	})
+	return models, nil
+}
+
+func accountHasExplicitModelMapping(acc Account) bool {
+	if acc.Credentials == nil {
+		return false
+	}
+	switch raw := acc.Credentials["model_mapping"].(type) {
+	case map[string]any:
+		return len(raw) > 0
+	case map[string]string:
+		return len(raw) > 0
+	default:
+		return false
+	}
+}
+
+func accountDefaultModelIDs(acc Account, platform string) []string {
+	if acc.IsGeminiGoogleOne() {
+		ids := make([]string, 0, len(geminicli.GoogleOneModels))
+		for _, model := range geminicli.GoogleOneModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	}
+	return defaultModelsListCandidateIDs(platform)
 }
 
 func (s *adminServiceImpl) ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error) {

@@ -40,6 +40,11 @@ type AdminService interface {
 	GetAllGroupsIncludingInactive(ctx context.Context) ([]Group, error)
 	GetGroup(ctx context.Context, id int64) (*Group, error)
 	GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error)
+	// GetGroupPricingModelCandidates returns only the models actually exposed by
+	// schedulable accounts in the group. Unlike the /v1/models candidates above,
+	// it does not seed a platform-wide default list when the group has no
+	// accounts; it is used by the group pricing editor.
+	GetGroupPricingModelCandidates(ctx context.Context, id int64, platform string) ([]string, error)
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
 	// DuplicateGroup creates an inactive independent copy of a group's configuration
 	// and account bindings while preserving each binding's priority.
