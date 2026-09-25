@@ -7,6 +7,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func promptInjectionTestMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+	result, ok := value.(map[string]any)
+	require.True(t, ok, "expected object, got %T", value)
+	return result
+}
+
+func promptInjectionTestSlice(t *testing.T, value any) []any {
+	t.Helper()
+	result, ok := value.([]any)
+	require.True(t, ok, "expected array, got %T", value)
+	return result
+}
+
 func TestMatchingPromptInjectionRules(t *testing.T) {
 	groupID := int64(7)
 	config := PromptInjectionConfig{Rules: []PromptInjectionRule{
@@ -42,11 +56,11 @@ func TestApplyPromptInjectionsChatPositions(t *testing.T) {
 	require.NoError(t, err)
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(got, &root))
-	messages := root["messages"].([]any)
+	messages := promptInjectionTestSlice(t, root["messages"])
 	require.Len(t, messages, 6)
-	require.Equal(t, "p", messages[0].(map[string]any)["content"])
-	require.Equal(t, "b", messages[2].(map[string]any)["content"])
-	require.Equal(t, "a", messages[4].(map[string]any)["content"])
+	require.Equal(t, "p", promptInjectionTestMap(t, messages[0])["content"])
+	require.Equal(t, "b", promptInjectionTestMap(t, messages[2])["content"])
+	require.Equal(t, "a", promptInjectionTestMap(t, messages[4])["content"])
 }
 
 func TestApplyPromptInjectionsResponsesStringInput(t *testing.T) {
@@ -56,9 +70,9 @@ func TestApplyPromptInjectionsResponsesStringInput(t *testing.T) {
 	require.NoError(t, err)
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(got, &root))
-	input := root["input"].([]any)
-	require.Equal(t, "policy", input[0].(map[string]any)["content"])
-	require.Equal(t, "hello", input[1].(map[string]any)["content"])
+	input := promptInjectionTestSlice(t, root["input"])
+	require.Equal(t, "policy", promptInjectionTestMap(t, input[0])["content"])
+	require.Equal(t, "hello", promptInjectionTestMap(t, input[1])["content"])
 }
 
 func TestApplyPromptInjectionsNoRulesPreservesBytes(t *testing.T) {
@@ -75,8 +89,8 @@ func TestApplyPromptInjectionsResponsesArrayInput(t *testing.T) {
 	require.NoError(t, err)
 	var root map[string]any
 	require.NoError(t, json.Unmarshal(got, &root))
-	input := root["input"].([]any)
+	input := promptInjectionTestSlice(t, root["input"])
 	require.Len(t, input, 2)
-	require.Equal(t, "user", input[0].(map[string]any)["role"])
-	require.Equal(t, "policy", input[1].(map[string]any)["content"])
+	require.Equal(t, "user", promptInjectionTestMap(t, input[0])["role"])
+	require.Equal(t, "policy", promptInjectionTestMap(t, input[1])["content"])
 }

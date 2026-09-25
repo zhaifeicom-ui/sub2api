@@ -155,7 +155,11 @@ func (s *SettingService) GetPromptInjectionConfig(ctx context.Context) (PromptIn
 	if err != nil {
 		return PromptInjectionConfig{}, err
 	}
-	return value.(PromptInjectionConfig), nil
+	config, ok := value.(PromptInjectionConfig)
+	if !ok {
+		return PromptInjectionConfig{}, fmt.Errorf("提示词注入配置缓存类型错误: %T", value)
+	}
+	return config, nil
 }
 
 func (s *SettingService) SetPromptInjectionConfig(ctx context.Context, config PromptInjectionConfig) (PromptInjectionConfig, error) {

@@ -270,7 +270,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		!strings.EqualFold(strings.TrimSpace(input.ChannelMappedModel), requestedPricingModel)
 	if input.BillingModelSource != BillingModelSourceResponse && !channelMappingOverridesRequestedModel {
 		billingModels = prioritizeExplicitGroupRequestedModelPrice(billingModels, requestedPricingModel, apiKey.Group)
-		billingModel = firstUsageBillingModel(billingModels)
 	}
 	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
 	serviceTier := ""
