@@ -615,7 +615,7 @@ async function loadGroupModelEntries() {
   const requestId = ++groupModelsRequestId.value
   editorModelsLoading.value = true
   try {
-    const candidates = uniqueModels(await adminAPI.groups.getModelsListCandidates(ownerId, group.platform, { pricingOnly: true }))
+    const candidates = uniqueModels(await adminAPI.groups.getModelAllowlistCandidates(ownerId, group.platform, { pricingOnly: true }))
     if (requestId !== groupModelsRequestId.value) return
 
     const existingEntries = [...editorEntries.value]
