@@ -1804,7 +1804,7 @@ func TestOpenAIGatewayServiceRecordUsage_GroupAliasPriceOverridesMappedModelPric
 			pricingAt := time.Date(2026, time.September, 26, 12, 0, 0, 0, time.FixedZone("Asia/Shanghai", 8*60*60))
 			tokens := UsageTokens{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens}
 			expectedCost, err := svc.calculateOpenAIRecordUsageTokenCost(
-				context.Background(), apiKey, tt.wantBillingModel, 1.1, pricingAt, tokens, "", nil,
+				context.Background(), apiKey, tt.wantBillingModel, 1.1, pricingAt, tokens, "", "", nil,
 			)
 			require.NoError(t, err)
 
