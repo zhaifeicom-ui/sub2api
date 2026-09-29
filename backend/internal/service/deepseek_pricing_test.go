@@ -161,6 +161,7 @@ func TestCalculateCostUnified_DeepseekGroupPricingUsesPeakMultiplier(t *testing.
 	outputPrice := 2e-6
 	group := &Group{
 		ID: 1, Name: "ds-group", Platform: PlatformDeepseek, Status: StatusActive,
+		DeepseekPeakRateEnabled: true,
 		ModelPricing: []ChannelModelPricing{{
 			Models: []string{"deepseek-v4-flash"}, BillingMode: BillingModeToken,
 			InputPrice: &inputPrice, OutputPrice: &outputPrice,
@@ -189,6 +190,44 @@ func TestCalculateCostUnified_DeepseekGroupPricingUsesPeakMultiplier(t *testing.
 	require.NoError(t, err)
 	require.InDelta(t, groupTotal*2, peak.TotalCost, 1e-10,
 		"分组自定义定价应叠加官方峰谷倍率")
+}
+
+func TestCalculateCostUnified_DeepseekGroupCanDisablePeakMultiplier(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
+	inputPrice := 1e-6
+	outputPrice := 2e-6
+	group := &Group{
+		ID: 1, Name: "ds-no-peak-group", Platform: PlatformDeepseek, Status: StatusActive,
+		DeepseekPeakRateEnabled: false,
+		ModelPricing: []ChannelModelPricing{{
+			Models: []string{"deepseek-v4-flash"}, BillingMode: BillingModeToken,
+			InputPrice: &inputPrice, OutputPrice: &outputPrice,
+		}},
+	}
+	baseTotal := 1000*inputPrice + 500*outputPrice + 1000*3e-9
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "deepseek-v4-flash", Group: group,
+		Tokens: tokens, RateMultiplier: 1.0, Resolver: resolver,
+		PricingAt: time.Date(2026, 8, 24, 2, 0, 0, 0, time.UTC), // 工作日高峰
+	})
+	require.NoError(t, err)
+	require.InDelta(t, baseTotal, cost.TotalCost, 1e-10,
+		"关闭分组开关后，高峰时段仍应使用分组基础价格")
+
+	// 没有分组覆盖、回退目录价卡时也必须遵守同一个分组开关。
+	group.ModelPricing = nil
+	cost, err = bs.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "deepseek-v4-flash", Group: group,
+		Tokens: tokens, RateMultiplier: 1.0, Resolver: resolver,
+		PricingAt: time.Date(2026, 8, 24, 2, 0, 0, 0, time.UTC), // 工作日高峰
+	})
+	require.NoError(t, err)
+	defaultBaseTotal := 1000*1.5e-7 + 500*6e-7 + 1000*3e-9
+	require.InDelta(t, defaultBaseTotal, cost.TotalCost, 1e-10,
+		"关闭分组开关后，目录默认价也不应乘高峰 ×2")
 }
 
 func TestCalculateCostUnified_NonDeepseekDefaultCardNotScaledByPeak(t *testing.T) {

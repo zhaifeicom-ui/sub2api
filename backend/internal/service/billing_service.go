@@ -1534,7 +1534,9 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	// 06:00–10:00 UTC，仅工作日；北京时间周末全天低谷）按 2× 低谷价计费。
 	// 默认价卡和分组定价应用 DeepSeek 峰谷倍率；分组基础价格仍由管理员控制。
 	// 渠道自定义定价不叠加。pricingAt 已在上方按请求时点或当前时刻归一化。
-	if (resolved.Source == PricingSourceLiteLLM || resolved.Source == PricingSourceGroup) && isDeepSeekModel(input.Model) {
+	deepseekPeakRateEnabled := input.Group == nil || input.Group.DeepseekPeakRateEnabled
+	if deepseekPeakRateEnabled &&
+		(resolved.Source == PricingSourceLiteLLM || resolved.Source == PricingSourceGroup) && isDeepSeekModel(input.Model) {
 		if mult := deepseekPeakMultiplierAt(pricingAt); mult > 1 {
 			cloned := *pricing
 			cloned.InputPricePerToken *= mult

@@ -1165,6 +1165,58 @@ func TestAdminService_CreateGroup_InvalidPeakRateReturnsBadRequest(t *testing.T)
 	require.Nil(t, repo.created)
 }
 
+func TestAdminService_CreateGroup_DeepseekPeakRateDefaultsOnAndCanBeDisabled(t *testing.T) {
+	t.Run("defaults to enabled for existing behavior", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "deepseek-default", Platform: PlatformDeepseek, RateMultiplier: 1,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, group)
+		require.True(t, group.DeepseekPeakRateEnabled)
+		require.True(t, repo.created.DeepseekPeakRateEnabled)
+	})
+
+	t.Run("respects explicit opt out", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+		disabled := false
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "deepseek-no-peak", Platform: PlatformDeepseek, RateMultiplier: 1,
+			DeepseekPeakRateEnabled: &disabled,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, group)
+		require.False(t, group.DeepseekPeakRateEnabled)
+		require.False(t, repo.created.DeepseekPeakRateEnabled)
+	})
+}
+
+func TestAdminService_UpdateGroup_DeepseekPeakRateCanBeDisabled(t *testing.T) {
+	existingGroup := &Group{
+		ID: 1, Name: "deepseek-group", Platform: PlatformDeepseek,
+		Status: StatusActive, DeepseekPeakRateEnabled: true,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	disabled := false
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		DeepseekPeakRateEnabled: &disabled,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.False(t, group.DeepseekPeakRateEnabled)
+	require.False(t, repo.updated.DeepseekPeakRateEnabled)
+}
+
 func TestAdminService_UpdateGroup_PeakRateValidation(t *testing.T) {
 	tests := []struct {
 		name    string

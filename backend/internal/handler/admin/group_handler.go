@@ -136,11 +136,12 @@ func (h *GroupHandler) rejectUnsupportedSimpleModeOperation(c *gin.Context, oper
 }
 
 type simpleModeGroupResponse struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Platform    string `json:"platform"`
-	Status      string `json:"status"`
+	ID                      int64  `json:"id"`
+	Name                    string `json:"name"`
+	Description             string `json:"description"`
+	Platform                string `json:"platform"`
+	Status                  string `json:"status"`
+	DeepseekPeakRateEnabled bool   `json:"deepseek_peak_rate_enabled"`
 
 	AccountCount            int64     `json:"account_count,omitempty"`
 	ActiveAccountCount      int64     `json:"active_account_count,omitempty"`
@@ -156,9 +157,10 @@ func groupForSimpleMode(group *service.Group) *simpleModeGroupResponse {
 	}
 	return &simpleModeGroupResponse{
 		ID: group.ID, Name: group.Name, Description: group.Description, Platform: group.Platform,
-		Status:             group.Status,
-		AccountCount:       group.AccountCount,
-		ActiveAccountCount: group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
+		DeepseekPeakRateEnabled: group.DeepseekPeakRateEnabled,
+		Status:                  group.Status,
+		AccountCount:            group.AccountCount,
+		ActiveAccountCount:      group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
 		SortOrder: group.SortOrder, CreatedAt: group.CreatedAt, UpdatedAt: group.UpdatedAt,
 	}
 }
@@ -167,7 +169,10 @@ func sanitizeCreateGroupRequestForSimpleMode(req *CreateGroupRequest) {
 	if req == nil {
 		return
 	}
-	allowed := CreateGroupRequest{Name: req.Name, Description: req.Description, Platform: req.Platform}
+	allowed := CreateGroupRequest{
+		Name: req.Name, Description: req.Description, Platform: req.Platform,
+		DeepseekPeakRateEnabled: req.DeepseekPeakRateEnabled,
+	}
 	allowed.RateMultiplier = 1
 	allowed.SubscriptionType = service.SubscriptionTypeStandard
 	*req = allowed
@@ -177,7 +182,10 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 	if req == nil {
 		return
 	}
-	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description}
+	*req = UpdateGroupRequest{
+		Name: req.Name, Description: req.Description,
+		DeepseekPeakRateEnabled: req.DeepseekPeakRateEnabled,
+	}
 }
 
 // CreateGroupRequest represents create group request
@@ -202,6 +210,7 @@ type CreateGroupRequest struct {
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
 	VideoRateIndependent            bool                          `json:"video_rate_independent"`
 	VideoRateMultiplier             *float64                      `json:"video_rate_multiplier"`
+	DeepseekPeakRateEnabled         *bool                         `json:"deepseek_peak_rate_enabled"`
 	PeakRateEnabled                 bool                          `json:"peak_rate_enabled"`
 	PeakStart                       string                        `json:"peak_start"`
 	PeakEnd                         string                        `json:"peak_end"`
@@ -277,6 +286,7 @@ type UpdateGroupRequest struct {
 	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
 	VideoRateIndependent            *bool                         `json:"video_rate_independent"`
 	VideoRateMultiplier             *float64                      `json:"video_rate_multiplier"`
+	DeepseekPeakRateEnabled         *bool                         `json:"deepseek_peak_rate_enabled"`
 	PeakRateEnabled                 *bool                         `json:"peak_rate_enabled"`
 	PeakStart                       *string                       `json:"peak_start"`
 	PeakEnd                         *string                       `json:"peak_end"`
@@ -683,6 +693,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
 		VideoRateIndependent:            req.VideoRateIndependent,
 		VideoRateMultiplier:             req.VideoRateMultiplier,
+		DeepseekPeakRateEnabled:         req.DeepseekPeakRateEnabled,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -829,6 +840,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
 		VideoRateIndependent:            req.VideoRateIndependent,
 		VideoRateMultiplier:             req.VideoRateMultiplier,
+		DeepseekPeakRateEnabled:         req.DeepseekPeakRateEnabled,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,

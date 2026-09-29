@@ -521,6 +521,20 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <div
+          v-if="createForm.platform === 'deepseek'"
+          class="rounded-lg border border-teal-200 bg-teal-50/70 p-3 dark:border-teal-900 dark:bg-teal-950/20"
+        >
+          <div class="flex items-center gap-3">
+            <Toggle v-model="createForm.deepseek_peak_rate_enabled" />
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {{ t("admin.groups.deepseekPeakRate.enable") }}
+            </span>
+          </div>
+          <p class="mt-1.5 text-xs text-gray-600 dark:text-gray-400">
+            {{ t("admin.groups.deepseekPeakRate.hint") }}
+          </p>
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="!authStore.isSimpleMode && copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2157,6 +2171,20 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div
+          v-if="editForm.platform === 'deepseek'"
+          class="rounded-lg border border-teal-200 bg-teal-50/70 p-3 dark:border-teal-900 dark:bg-teal-950/20"
+        >
+          <div class="flex items-center gap-3">
+            <Toggle v-model="editForm.deepseek_peak_rate_enabled" />
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {{ t("admin.groups.deepseekPeakRate.enable") }}
+            </span>
+          </div>
+          <p class="mt-1.5 text-xs text-gray-600 dark:text-gray-400">
+            {{ t("admin.groups.deepseekPeakRate.hint") }}
+          </p>
         </div>
         <template v-if="!authStore.isSimpleMode">
         <!-- 从分组复制账号（编辑时） -->
@@ -4942,6 +4970,7 @@ const createForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  deepseek_peak_rate_enabled: true,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5306,6 +5335,7 @@ const editForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  deepseek_peak_rate_enabled: true,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5798,6 +5828,7 @@ const closeCreateModal = () => {
   createForm.audio_realtime_price_per_min = null;
   createForm.audio_tts_price_per_million_chars = null;
   createForm.audio_stt_price_per_hour = null;
+  createForm.deepseek_peak_rate_enabled = true;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
@@ -6013,6 +6044,7 @@ const handleCreateGroup = async () => {
       requestData.web_search_price_per_call,
     );
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
+    requestData.deepseek_peak_rate_enabled = createForm.deepseek_peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
     requestData.peak_rate_multiplier = normalizeRateMultiplier(
@@ -6023,6 +6055,7 @@ const handleCreateGroup = async () => {
           name: createForm.name,
           description: createForm.description,
           platform: createForm.platform,
+          deepseek_peak_rate_enabled: createForm.deepseek_peak_rate_enabled,
         }
       : requestData;
     await adminAPI.groups.create(payload);
@@ -6086,6 +6119,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.audio_tts_price_per_million_chars = group.audio_tts_price_per_million_chars ?? null;
   editForm.audio_stt_price_per_hour = group.audio_stt_price_per_hour ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
+  editForm.deepseek_peak_rate_enabled = group.deepseek_peak_rate_enabled ?? true;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
   editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
@@ -6178,6 +6212,7 @@ const closeEditModal = () => {
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.deepseek_peak_rate_enabled = true;
   editForm.peak_rate_enabled = false;
   editForm.peak_start = "";
   editForm.peak_end = "";
@@ -6364,6 +6399,7 @@ const handleUpdateGroup = async () => {
       payload.web_search_price_per_call,
     );
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
+    payload.deepseek_peak_rate_enabled = editForm.deepseek_peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;
     payload.peak_rate_multiplier = normalizeRateMultiplier(
@@ -6373,6 +6409,7 @@ const handleUpdateGroup = async () => {
       ? {
           name: editForm.name,
           description: editForm.description,
+          deepseek_peak_rate_enabled: editForm.deepseek_peak_rate_enabled,
         }
       : payload;
     await adminAPI.groups.update(editingGroup.value.id, requestData);

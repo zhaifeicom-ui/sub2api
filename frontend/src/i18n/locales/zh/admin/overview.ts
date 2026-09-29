@@ -1126,6 +1126,10 @@ export default {
         peakMultiplier: '高峰倍率',
         multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
       },
+      deepseekPeakRate: {
+        enable: 'DeepSeek 工作时段价格 ×2',
+        hint: '开启时，工作日北京时间 09:00–12:00、14:00–18:00 对默认价卡/分组定价按 ×2；关闭后不加倍。渠道自定义价不受此开关影响。'
+      },
       profitControl: {
         enable: '启用利润控制',
         enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',

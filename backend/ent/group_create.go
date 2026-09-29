@@ -106,6 +106,20 @@ func (_c *GroupCreate) SetNillableRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field.
+func (_c *GroupCreate) SetDeepseekPeakRateEnabled(v bool) *GroupCreate {
+	_c.mutation.SetDeepseekPeakRateEnabled(v)
+	return _c
+}
+
+// SetNillableDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDeepseekPeakRateEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetDeepseekPeakRateEnabled(*v)
+	}
+	return _c
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
 	_c.mutation.SetPeakRateEnabled(v)
@@ -1051,6 +1065,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.DeepseekPeakRateEnabled(); !ok {
+		v := group.DefaultDeepseekPeakRateEnabled
+		_c.mutation.SetDeepseekPeakRateEnabled(v)
+	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		v := group.DefaultPeakRateEnabled
 		_c.mutation.SetPeakRateEnabled(v)
@@ -1232,6 +1250,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.DeepseekPeakRateEnabled(); !ok {
+		return &ValidationError{Name: "deepseek_peak_rate_enabled", err: errors.New(`ent: missing required field "Group.deepseek_peak_rate_enabled"`)}
 	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
@@ -1468,6 +1489,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+	}
+	if value, ok := _c.mutation.DeepseekPeakRateEnabled(); ok {
+		_spec.SetField(group.FieldDeepseekPeakRateEnabled, field.TypeBool, value)
+		_node.DeepseekPeakRateEnabled = value
 	}
 	if value, ok := _c.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -1940,6 +1965,18 @@ func (u *GroupUpsert) UpdateRateMultiplier() *GroupUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *GroupUpsert) AddRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldRateMultiplier, v)
+	return u
+}
+
+// SetDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field.
+func (u *GroupUpsert) SetDeepseekPeakRateEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldDeepseekPeakRateEnabled, v)
+	return u
+}
+
+// UpdateDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDeepseekPeakRateEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldDeepseekPeakRateEnabled)
 	return u
 }
 
@@ -3057,6 +3094,20 @@ func (u *GroupUpsertOne) AddRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field.
+func (u *GroupUpsertOne) SetDeepseekPeakRateEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDeepseekPeakRateEnabled(v)
+	})
+}
+
+// UpdateDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDeepseekPeakRateEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDeepseekPeakRateEnabled()
 	})
 }
 
@@ -4503,6 +4554,20 @@ func (u *GroupUpsertBulk) AddRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field.
+func (u *GroupUpsertBulk) SetDeepseekPeakRateEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDeepseekPeakRateEnabled(v)
+	})
+}
+
+// UpdateDeepseekPeakRateEnabled sets the "deepseek_peak_rate_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDeepseekPeakRateEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDeepseekPeakRateEnabled()
 	})
 }
 

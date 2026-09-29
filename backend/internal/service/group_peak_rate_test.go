@@ -212,6 +212,7 @@ func TestPeakMultiplier_SnapshotRoundTrip(t *testing.T) {
 		User:  &User{ID: 1, Status: StatusActive, Role: RoleUser},
 		Group: newPeakGroup(true, "14:00", "18:00", 3.0),
 	}
+	apiKey.Group.DeepseekPeakRateEnabled = true
 	svc := &APIKeyService{}
 
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
@@ -224,6 +225,7 @@ func TestPeakMultiplier_SnapshotRoundTrip(t *testing.T) {
 	}
 
 	if !restored.Group.PeakRateEnabled ||
+		!restored.Group.DeepseekPeakRateEnabled ||
 		restored.Group.PeakStart != "14:00" ||
 		restored.Group.PeakEnd != "18:00" ||
 		restored.Group.PeakRateMultiplier != 3.0 {

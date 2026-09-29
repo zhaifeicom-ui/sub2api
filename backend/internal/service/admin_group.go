@@ -469,6 +469,7 @@ func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 	*input = CreateGroupInput{
 		Name: input.Name, Description: input.Description, Platform: input.Platform,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+		DeepseekPeakRateEnabled: input.DeepseekPeakRateEnabled,
 	}
 }
 
@@ -476,7 +477,10 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description}
+	*input = UpdateGroupInput{
+		Name: input.Name, Description: input.Description,
+		DeepseekPeakRateEnabled: input.DeepseekPeakRateEnabled,
+	}
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
@@ -573,6 +577,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.PeakRateMultiplier != nil {
 		peakRateMultiplier = *input.PeakRateMultiplier
 	}
+	deepseekPeakRateEnabled := true
+	if input.DeepseekPeakRateEnabled != nil {
+		deepseekPeakRateEnabled = *input.DeepseekPeakRateEnabled
+	}
 	// 先归一化（非订阅分组清空高峰配置、清洗停用状态下的脏字段）再校验，与 UpdateGroup 同一收口。
 	peakRateEnabled, peakStart, peakEnd, peakRateMultiplier := NormalizePeakRateConfig(subscriptionType, input.PeakRateEnabled, input.PeakStart, input.PeakEnd, peakRateMultiplier)
 	if err := ValidatePeakRateConfig(subscriptionType, peakRateEnabled, peakStart, peakEnd, peakRateMultiplier); err != nil {
@@ -662,6 +670,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Description:                     input.Description,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
+		DeepseekPeakRateEnabled:         deepseekPeakRateEnabled,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -956,6 +965,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("video_rate_multiplier must be >= 0")
 		}
 		group.VideoRateMultiplier = *input.VideoRateMultiplier
+	}
+	if input.DeepseekPeakRateEnabled != nil {
+		group.DeepseekPeakRateEnabled = *input.DeepseekPeakRateEnabled
 	}
 	if input.PeakRateEnabled != nil {
 		group.PeakRateEnabled = *input.PeakRateEnabled

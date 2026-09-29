@@ -85,6 +85,11 @@ func RateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRateMultiplier, v))
 }
 
+// DeepseekPeakRateEnabled applies equality check predicate on the "deepseek_peak_rate_enabled" field. It's identical to DeepseekPeakRateEnabledEQ.
+func DeepseekPeakRateEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDeepseekPeakRateEnabled, v))
+}
+
 // PeakRateEnabled applies equality check predicate on the "peak_rate_enabled" field. It's identical to PeakRateEnabledEQ.
 func PeakRateEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPeakRateEnabled, v))
@@ -653,6 +658,16 @@ func RateMultiplierLT(v float64) predicate.Group {
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRateMultiplier, v))
+}
+
+// DeepseekPeakRateEnabledEQ applies the EQ predicate on the "deepseek_peak_rate_enabled" field.
+func DeepseekPeakRateEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDeepseekPeakRateEnabled, v))
+}
+
+// DeepseekPeakRateEnabledNEQ applies the NEQ predicate on the "deepseek_peak_rate_enabled" field.
+func DeepseekPeakRateEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDeepseekPeakRateEnabled, v))
 }
 
 // PeakRateEnabledEQ applies the EQ predicate on the "peak_rate_enabled" field.

@@ -1129,6 +1129,10 @@ export default {
         peakMultiplier: 'Peak multiplier',
         multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
       },
+      deepseekPeakRate: {
+        enable: 'Double DeepSeek prices during peak hours',
+        hint: 'When enabled, default and group prices are doubled on weekdays, Beijing time 09:00–12:00 and 14:00–18:00. When disabled, no ×2 is applied. Channel custom prices are unaffected.'
+      },
       profitControl: {
         enable: 'Enable profit control',
         enabledHint: 'Scheduling only admits accounts whose account multiplier ≤ the request\'s effective downstream multiplier × (1 − min margin − safety buffer). Account multipliers may be maintained manually or synchronized from probes; existing ordering, stickiness and breakers keep working among qualified accounts. Image/video scheduling is not covered yet.',

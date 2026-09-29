@@ -11,14 +11,15 @@ import (
 
 func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T) {
 	group := &dbent.Group{
-		ID:                    1,
-		Name:                  "openai-dispatch",
-		Platform:              service.PlatformOpenAI,
-		Status:                service.StatusActive,
-		SubscriptionType:      service.SubscriptionTypeStandard,
-		RateMultiplier:        1,
-		AllowMessagesDispatch: true,
-		DefaultMappedModel:    "gpt-5.4",
+		ID:                      1,
+		Name:                    "openai-dispatch",
+		Platform:                service.PlatformOpenAI,
+		Status:                  service.StatusActive,
+		SubscriptionType:        service.SubscriptionTypeStandard,
+		RateMultiplier:          1,
+		DeepseekPeakRateEnabled: true,
+		AllowMessagesDispatch:   true,
+		DefaultMappedModel:      "gpt-5.4",
 		VideoModelPrices: map[string]map[string]float64{
 			service.VideoPriceFamilyGrokImagineVideo15: {service.VideoBillingResolution720P: 0.14},
 		},
@@ -34,6 +35,7 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 
 	got := groupEntityToService(group)
 	require.NotNil(t, got)
+	require.True(t, got.DeepseekPeakRateEnabled)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 	require.Equal(t, group.VideoModelPrices, got.VideoModelPrices)
 }
@@ -49,6 +51,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 		SetStatus(service.StatusActive).
 		SetSubscriptionType(service.SubscriptionTypeStandard).
 		SetRateMultiplier(1).
+		SetDeepseekPeakRateEnabled(true).
 		SetAllowMessagesDispatch(true).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
@@ -75,5 +78,6 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.NoError(t, err)
 	require.Equal(t, key.Name, got.Name)
 	require.NotNil(t, got.Group)
+	require.True(t, got.Group.DeepseekPeakRateEnabled)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 }

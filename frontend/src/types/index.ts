@@ -568,6 +568,8 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
+  // Whether to apply the built-in DeepSeek weekday peak-price ×2 rule.
+  deepseek_peak_rate_enabled?: boolean
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // Anthropic/OpenAI reasoning ceiling; empty means unlimited
   max_reasoning_effort_over_limit?: string // downgrade (default) or deny when over the ceiling
@@ -823,6 +825,7 @@ export interface CreateGroupRequest {
   audio_tts_price_per_million_chars?: number | null
   audio_stt_price_per_hour?: number | null
   peak_rate_enabled?: boolean
+  deepseek_peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
@@ -889,6 +892,7 @@ export interface UpdateGroupRequest {
   audio_tts_price_per_million_chars?: number | null
   audio_stt_price_per_hour?: number | null
   peak_rate_enabled?: boolean
+  deepseek_peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
