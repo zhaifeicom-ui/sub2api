@@ -83,6 +83,13 @@ func RegisterUserRoutes(
 		}
 
 		// 用户可用分组（非管理员接口）
+		quality := authenticated.Group("/quality-tests")
+		quality.GET("/configs", h.GroupQuality.Configs)
+		quality.GET("/groups/:id/runs", h.GroupQuality.History)
+		quality.POST("/groups/:id/runs", panelRateLimiter.Heavy(), h.GroupQuality.Start)
+		quality.GET("/runs/:id", h.GroupQuality.Detail)
+
+		// 用户可用分组（非管理员接口）
 		groups := authenticated.Group("/groups")
 		{
 			groups.GET("/available", h.APIKey.GetAvailableGroups)

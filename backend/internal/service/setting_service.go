@@ -135,6 +135,7 @@ type SettingService struct {
 	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF    singleflight.Group
 	promptInjectionCache        atomic.Value // *cachedPromptInjectionConfig
+	promptInjectionMu           sync.Mutex
 	promptInjectionSF           singleflight.Group
 
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime

@@ -975,6 +975,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
 	ProvideChannelMonitorV2Service,
+	ProvideGroupQualityService,
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
@@ -1057,6 +1058,12 @@ func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingServ
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
 	return svc
+}
+
+func ProvideGroupQualityService(repo GroupQualityRepository, accounts AccountRepository, groups GroupRepository, upstream HTTPUpstream, cfg *config.Config, concurrency *ConcurrencyService, tls *TLSFingerprintProfileService) *GroupQualityService {
+	s := NewGroupQualityService(repo, accounts, groups, upstream, cfg, concurrency, tls)
+	s.StartAutomatic()
+	return s
 }
 
 // ProvideChannelMonitorV2Aggregator starts the passive minute-rollup worker.

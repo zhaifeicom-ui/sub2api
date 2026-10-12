@@ -25,10 +25,12 @@
       :title="detailTitle"
       @close="closeDetail"
     />
+    <GroupQualityStatusEntries />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
+import GroupQualityStatusEntries from '@/components/quality/GroupQualityStatusEntries.vue'
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'

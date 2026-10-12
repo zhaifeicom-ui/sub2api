@@ -260,7 +260,11 @@
           :coverage="matrix.coverage"
           :health-mode="healthMode"
           :show-throughput="showThroughput"
-        />
+        >
+          <template #row-actions="{ row }">
+            <button v-if="row.group_id && qualityByGroup[row.group_id]?.enabled" type="button" class="shrink-0 rounded-lg border border-primary-200 px-2 py-1 text-[10px] text-primary-600 hover:bg-primary-50 dark:border-primary-800 dark:text-primary-300" @click.stop="qualityTarget = qualityByGroup[row.group_id]">{{ t('groupQuality.test') }}</button>
+          </template>
+        </RelayPulseMatrix>
         <div
           v-else-if="loading"
           class="card flex min-h-[320px] items-center justify-center !rounded-3xl !border-0 text-sm text-gray-400 shadow-sm ring-1 ring-gray-900/5 dark:ring-dark-700"
@@ -454,10 +458,13 @@
         </div>
       </section>
     </div>
+    <GroupQualityDialog v-if="qualityTarget" :show="true" :config="qualityTarget" :admin="isAdmin" @close="qualityTarget = null" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
+import GroupQualityDialog from '@/components/quality/GroupQualityDialog.vue'
+import { qualityConfigs, type QualityConfig } from '@/api/groupQuality'
 import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -511,6 +518,12 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 const { t, te, locale } = useI18n()
 const isAdmin = computed(() => authStore.isAdmin)
+const qualityTarget = ref<QualityConfig | null>(null)
+const qualityByGroup = ref<Record<number, QualityConfig>>({})
+onMounted(async () => {
+  try { qualityByGroup.value = Object.fromEntries((await qualityConfigs(isAdmin.value)).map(c => [c.group_id, c])) }
+  catch { qualityByGroup.value = {} }
+})
 /** Admins always see RPM/TPM; users honor the hide-throughput system setting. */
 const showThroughput = computed(() => isAdmin.value || !isChannelMonitorThroughputHidden())
 /** Admins always see ranking; users honor the hide-user-ranking system setting. */

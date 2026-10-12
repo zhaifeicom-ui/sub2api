@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strings"
@@ -18,15 +21,21 @@ const (
 	maxPromptInjectionContentRunes = 100000
 )
 
+var ErrPromptInjectionConflict = infraerrors.Conflict("PROMPT_INJECTION_CONFLICT", "规则已被其他页面修改，请刷新后重试")
+
 type PromptInjectionConfig struct {
-	Rules []PromptInjectionRule `json:"rules"`
+	Version int64                 `json:"version"`
+	Rules   []PromptInjectionRule `json:"rules"`
 }
 
 type PromptInjectionRule struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-	Scope   string `json:"scope"`
+	Action     string `json:"action,omitempty"`
+	Match      string `json:"match,omitempty"`
+	WholeInput bool   `json:"whole_input,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Enabled    bool   `json:"enabled"`
+	Scope      string `json:"scope"`
 	// GroupIDs allows one rule to target several groups. TargetID is kept for
 	// backwards compatibility with rules created by the first version.
 	GroupIDs []int64  `json:"group_ids,omitempty"`
@@ -41,6 +50,7 @@ type PromptInjectionRule struct {
 type cachedPromptInjectionConfig struct {
 	config   PromptInjectionConfig
 	loadedAt time.Time
+	degraded bool
 }
 
 func normalizePromptInjectionConfig(config PromptInjectionConfig) (PromptInjectionConfig, error) {
@@ -58,7 +68,24 @@ func normalizePromptInjectionConfig(config PromptInjectionConfig) (PromptInjecti
 		rule.Scope = strings.ToLower(strings.TrimSpace(rule.Scope))
 		rule.Role = strings.ToLower(strings.TrimSpace(rule.Role))
 		rule.Position = strings.ToLower(strings.TrimSpace(rule.Position))
-		rule.Content = strings.TrimSpace(rule.Content)
+		if rule.Action == "" || rule.Action == "append" || rule.Action == "replace_system" {
+			rule.Content = strings.TrimSpace(rule.Content)
+		}
+		if rule.Action == "" {
+			rule.Action = "append"
+		}
+		if rule.Action != "append" && rule.Action != "replace_system" && rule.Action != "replace_input" && rule.Action != "replace_output" {
+			return config, fmt.Errorf("规则操作无效")
+		}
+		if rule.Action == "replace_input" || rule.Action == "replace_output" {
+			if (rule.Match == "" && !(rule.Action == "replace_input" && rule.WholeInput)) || len(rule.Match) > 1024 || len(rule.Content) > 4096 {
+				return config, fmt.Errorf("替换匹配词不能为空且不可超过1024字节，替换文本不可超过4096字节")
+			}
+		}
+		if rule.Action == "replace_system" {
+			rule.Role = "system"
+			rule.Position = "prepend"
+		}
 		if rule.ID == "" {
 			return config, fmt.Errorf("第 %d 条规则缺少 ID", i+1)
 		}
@@ -103,7 +130,7 @@ func normalizePromptInjectionConfig(config PromptInjectionConfig) (PromptInjecti
 		if rule.Position != "prepend" && rule.Position != "before_first_user" && rule.Position != "after_last_user" {
 			return config, fmt.Errorf("规则 %q 的注入位置无效", rule.Name)
 		}
-		if rule.Content == "" {
+		if rule.Content == "" && (rule.Action == "append" || rule.Action == "replace_system") {
 			return config, fmt.Errorf("规则 %q 的提示词内容不能为空", rule.Name)
 		}
 		if len([]rune(rule.Content)) > maxPromptInjectionContentRunes {
@@ -129,10 +156,14 @@ func (s *SettingService) GetPromptInjectionConfig(ctx context.Context) (PromptIn
 		return cached.config, nil
 	}
 	value, err, _ := s.promptInjectionSF.Do("load", func() (any, error) {
+		s.promptInjectionMu.Lock()
+		defer s.promptInjectionMu.Unlock()
 		if cached, ok := s.promptInjectionCache.Load().(*cachedPromptInjectionConfig); ok && time.Since(cached.loadedAt) < promptInjectionCacheTTL {
 			return cached.config, nil
 		}
-		raw, err := s.settingRepo.GetValue(ctx, SettingKeyPromptInjectionRules)
+		readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		raw, err := s.settingRepo.GetValue(readCtx, SettingKeyPromptInjectionRules)
 		if errors.Is(err, ErrSettingNotFound) {
 			config := PromptInjectionConfig{Rules: []PromptInjectionRule{}}
 			s.promptInjectionCache.Store(&cachedPromptInjectionConfig{config: config, loadedAt: time.Now()})
@@ -153,6 +184,15 @@ func (s *SettingService) GetPromptInjectionConfig(ctx context.Context) (PromptIn
 		return config, nil
 	})
 	if err != nil {
+		s.promptInjectionMu.Lock()
+		defer s.promptInjectionMu.Unlock()
+		if cached, ok := s.promptInjectionCache.Load().(*cachedPromptInjectionConfig); ok {
+			if time.Since(cached.loadedAt) >= promptInjectionCacheTTL {
+				s.promptInjectionCache.Store(&cachedPromptInjectionConfig{config: cached.config, loadedAt: time.Now(), degraded: true})
+			}
+			slog.Warn("prompt injection using last valid configuration", "version", cached.config.Version)
+			return cached.config, nil
+		}
 		return PromptInjectionConfig{}, err
 	}
 	config, ok := value.(PromptInjectionConfig)
@@ -161,8 +201,36 @@ func (s *SettingService) GetPromptInjectionConfig(ctx context.Context) (PromptIn
 	}
 	return config, nil
 }
+func (s *SettingService) PromptInjectionDegraded() bool {
+	if s == nil {
+		return false
+	}
+	if c, ok := s.promptInjectionCache.Load().(*cachedPromptInjectionConfig); ok {
+		return c.degraded
+	}
+	return false
+}
 
 func (s *SettingService) SetPromptInjectionConfig(ctx context.Context, config PromptInjectionConfig) (PromptInjectionConfig, error) {
+	if s == nil || s.settingRepo == nil {
+		return config, errors.New("设置服务不可用")
+	}
+	s.promptInjectionMu.Lock()
+	defer s.promptInjectionMu.Unlock()
+	oldRaw, readErr := s.settingRepo.GetValue(ctx, SettingKeyPromptInjectionRules)
+	if readErr != nil && !errors.Is(readErr, ErrSettingNotFound) {
+		return config, readErr
+	}
+	var old PromptInjectionConfig
+	if oldRaw != "" {
+		if err := json.Unmarshal([]byte(oldRaw), &old); err != nil {
+			return config, err
+		}
+	}
+	if config.Version != old.Version {
+		return config, ErrPromptInjectionConflict
+	}
+	config.Version = old.Version + 1
 	config, err := normalizePromptInjectionConfig(config)
 	if err != nil {
 		return config, err
@@ -174,11 +242,33 @@ func (s *SettingService) SetPromptInjectionConfig(ctx context.Context, config Pr
 	if s == nil || s.settingRepo == nil {
 		return config, errors.New("设置服务不可用")
 	}
-	if err := s.settingRepo.Set(ctx, SettingKeyPromptInjectionRules, string(raw)); err != nil {
+	var saveErr error
+	if repo, ok := s.settingRepo.(interface {
+		CompareAndSetValue(context.Context, string, string, string) (bool, error)
+	}); ok {
+		var changed bool
+		changed, saveErr = repo.CompareAndSetValue(ctx, SettingKeyPromptInjectionRules, oldRaw, string(raw))
+		if saveErr == nil && !changed {
+			saveErr = ErrPromptInjectionConflict
+		}
+	} else {
+		saveErr = s.settingRepo.Set(ctx, SettingKeyPromptInjectionRules, string(raw))
+	}
+	if err := saveErr; err != nil {
 		return config, fmt.Errorf("保存提示词注入配置: %w", err)
 	}
 	s.promptInjectionCache.Store(&cachedPromptInjectionConfig{config: config, loadedAt: time.Now()})
 	return config, nil
+}
+func (s *SettingService) RefreshPromptInjectionConfig(ctx context.Context) (PromptInjectionConfig, error) {
+	if s != nil {
+		s.promptInjectionMu.Lock()
+		if c, ok := s.promptInjectionCache.Load().(*cachedPromptInjectionConfig); ok {
+			s.promptInjectionCache.Store(&cachedPromptInjectionConfig{config: c.config, loadedAt: time.Time{}, degraded: c.degraded})
+		}
+		s.promptInjectionMu.Unlock()
+	}
+	return s.GetPromptInjectionConfig(ctx)
 }
 
 func wildcardModelMatch(pattern, model string) bool {
@@ -243,15 +333,30 @@ func matchingPromptInjectionRules(config PromptInjectionConfig, groupID *int64, 
 }
 
 func ApplyPromptInjections(body []byte, protocol string, rules []PromptInjectionRule) ([]byte, error) {
+	inputRules := []PromptInjectionRule{}
+	for _, r := range rules {
+		if r.Action != "replace_output" {
+			inputRules = append(inputRules, r)
+		}
+	}
+	rules = inputRules
 	if len(rules) == 0 {
 		return body, nil
 	}
 	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
+	if !json.Valid(body) {
+		return nil, fmt.Errorf("请求 JSON 无效")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil {
 		return nil, fmt.Errorf("解析待注入请求: %w", err)
 	}
+	if root == nil {
+		return nil, fmt.Errorf("请求必须是 JSON 对象")
+	}
 	field := "input"
-	if protocol == "chat_completions" {
+	if protocol == "chat_completions" || protocol == "anthropic" {
 		field = "messages"
 	}
 	var original []any
@@ -266,8 +371,55 @@ func ApplyPromptInjections(body []byte, protocol string, rules []PromptInjection
 		return nil, fmt.Errorf("请求字段 %s 必须是消息数组或字符串", field)
 	}
 	buckets := map[string][]any{"prepend": {}, "before_first_user": {}, "after_last_user": {}}
+	var replacement []string
+	if protocol == "anthropic" && root["system"] != nil {
+		original = append([]any{map[string]any{"role": "system", "content": root["system"]}}, original...)
+	}
 	for _, rule := range rules {
+		switch rule.Action {
+		case "replace_output":
+			continue
+		case "replace_input":
+			if rule.WholeInput {
+				for i := len(original) - 1; i >= 0; i-- {
+					if m, ok := original[i].(map[string]any); ok && m["role"] == "user" && managedContentHasText(m["content"]) {
+						m["content"] = replaceWholeManagedContent(m["content"], rule.Content)
+						break
+					}
+				}
+				continue
+			}
+			for _, item := range original {
+				if m, ok := item.(map[string]any); ok && m["role"] == "user" {
+					next, err := replaceManagedContent(m["content"], rule.Match, rule.Content)
+					if err != nil {
+						return nil, err
+					}
+					m["content"] = next
+				}
+			}
+			continue
+		case "replace_system":
+			replacement = append(replacement, rule.Content)
+			continue
+		}
 		buckets[rule.Position] = append(buckets[rule.Position], map[string]any{"role": rule.Role, "content": rule.Content})
+	}
+	if len(replacement) > 0 {
+		delete(root, "instructions")
+		filtered := make([]any, 0, len(original))
+		for _, item := range original {
+			if m, ok := item.(map[string]any); ok && m["role"] == "system" {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		original = filtered
+		if protocol == "responses" {
+			root["instructions"] = strings.Join(replacement, "\n\n")
+		} else {
+			buckets["prepend"] = append([]any{map[string]any{"role": "system", "content": strings.Join(replacement, "\n\n")}}, buckets["prepend"]...)
+		}
 	}
 	firstUser, lastUser := len(original), -1
 	for i, item := range original {
@@ -297,6 +449,29 @@ func ApplyPromptInjections(body []byte, protocol string, rules []PromptInjection
 		result = append(result, buckets["after_last_user"]...)
 	}
 	root[field] = result
+	if protocol == "anthropic" {
+		var blocks []any
+		messages := []any{}
+		for _, item := range result {
+			m, ok := item.(map[string]any)
+			if ok && (m["role"] == "system" || m["role"] == "developer") {
+				switch v := m["content"].(type) {
+				case string:
+					blocks = append(blocks, map[string]any{"type": "text", "text": v})
+				case []any:
+					blocks = append(blocks, v...)
+				}
+				continue
+			}
+			messages = append(messages, item)
+		}
+		root["messages"] = messages
+		if len(blocks) == 0 {
+			delete(root, "system")
+		} else {
+			root["system"] = blocks
+		}
+	}
 	updated, err := json.Marshal(root)
 	if err != nil {
 		return nil, fmt.Errorf("序列化注入后的请求: %w", err)
@@ -305,13 +480,18 @@ func ApplyPromptInjections(body []byte, protocol string, rules []PromptInjection
 }
 
 func (s *OpenAIGatewayService) applyManagedPromptInjections(ctx context.Context, c interface{ Get(string) (any, bool) }, account *Account, model, protocol string, body []byte) ([]byte, error) {
+	alreadyApplied := false
+	if c != nil {
+		if done, ok := c.Get("managed_policy_applied"); ok && done == true {
+			alreadyApplied = true
+		}
+	}
 	if s == nil || s.settingService == nil || account == nil {
 		return body, nil
 	}
 	config, err := s.settingService.GetPromptInjectionConfig(ctx)
 	if err != nil {
-		// 配置读取异常时保持网关可用；管理接口仍会明确返回错误。
-		return body, nil
+		return nil, err
 	}
 	var groupID *int64
 	if c != nil {
@@ -320,5 +500,85 @@ func (s *OpenAIGatewayService) applyManagedPromptInjections(ctx context.Context,
 		}
 	}
 	rules := matchingPromptInjectionRules(config, groupID, account.ID, model)
+	if alreadyApplied {
+		filtered := []PromptInjectionRule{}
+		for _, r := range rules {
+			if r.Scope == "account" {
+				filtered = append(filtered, r)
+			}
+		}
+		rules = filtered
+	}
+	slog.Info("prompt injection matched", "account_id", account.ID, "group_id", groupID, "version", config.Version, "rule_count", len(rules), "protocol", protocol)
 	return ApplyPromptInjections(body, protocol, rules)
+}
+
+func replaceManagedContent(content any, match, replacement string) (any, error) {
+	if match == "" {
+		return content, fmt.Errorf("匹配文字不能为空")
+	}
+	replace := func(text string) (string, error) {
+		count := strings.Count(text, match)
+		if count == 0 {
+			return text, nil
+		}
+		size := int64(len(text)) + int64(count)*int64(len(replacement)-len(match))
+		if size > 4*1024*1024 {
+			return "", fmt.Errorf("输入替换结果过大")
+		}
+		return strings.ReplaceAll(text, match, replacement), nil
+	}
+	if text, ok := content.(string); ok {
+		return replace(text)
+	}
+	if parts, ok := content.([]any); ok {
+		for _, part := range parts {
+			if p, ok := part.(map[string]any); ok && (p["type"] == "text" || p["type"] == "input_text") {
+				if text, ok := p["text"].(string); ok {
+					next, err := replace(text)
+					if err != nil {
+						return nil, err
+					}
+					p["text"] = next
+				}
+			}
+		}
+	}
+	return content, nil
+}
+func managedContentHasText(content any) bool {
+	if _, ok := content.(string); ok {
+		return true
+	}
+	if parts, ok := content.([]any); ok {
+		for _, v := range parts {
+			if p, ok := v.(map[string]any); ok && (p["type"] == "text" || p["type"] == "input_text") {
+				return true
+			}
+		}
+	}
+	return false
+}
+func replaceWholeManagedContent(content any, value string) any {
+	if _, ok := content.(string); ok {
+		return value
+	}
+	parts, _ := content.([]any)
+	result := []any{}
+	inserted := false
+	for _, v := range parts {
+		if p, ok := v.(map[string]any); ok && (p["type"] == "text" || p["type"] == "input_text") {
+			if !inserted {
+				p["text"] = value
+				result = append(result, p)
+				inserted = true
+			}
+			continue
+		}
+		result = append(result, v)
+	}
+	return result
+}
+func ManagedGroupRules(config PromptInjectionConfig, groupID int64) []PromptInjectionRule {
+	return matchingPromptInjectionRules(config, &groupID, 0, "")
 }

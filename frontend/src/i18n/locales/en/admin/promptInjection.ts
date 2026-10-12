@@ -1,5 +1,12 @@
 export default {
   promptInjection: {
+    wholeInput: 'Replace text of the latest user message (preserve images and tool results)',
+    replacementText: 'Replacement text (empty deletes)', previewText: 'Local preview (no model calls)',
+    events: 'Policy diagnostics', eventsHint: 'Latest 100 HTTP records, about 7-day retention. No prompt contents or secrets. Ingress status and pre-send text checks are shown separately. text_presence_verified confirms text presence, not model compliance. Bodies over 128 KiB or without a replay copy remain unverified.', eventStatus: 'Status', eventBytes: 'Request bytes (before → after)',
+    policyAction: 'Operation', matchText: 'Exact text to match', matchRequired: 'Enter text to match',
+    actionAppend: 'Append instruction', actionSystem: 'Replace existing System', actionInput: 'Replace user input', actionOutput: 'Replace model output',
+    policyActions: { append: 'Append', replace_system: 'Replace System', replace_input: 'Input replacement', replace_output: 'Output replacement' },
+    replacementHint: 'Group scoped. Literal matching, not regex. Empty replacement deletes text. Tools and usage remain unchanged. Chat/Responses/Messages HTTP JSON and SSE supported; native Gemini, WebSocket output rewriting and n>1 are not covered. System replacement removes System/Responses instructions but preserves Developer.',
     title: 'Prompt Injection Management',
     description: 'Inject consistent System, Developer, or User instructions into every model request for selected groups.',
     addRule: 'Add injection rule', editRule: 'Edit injection rule', empty: 'No injection rules yet',

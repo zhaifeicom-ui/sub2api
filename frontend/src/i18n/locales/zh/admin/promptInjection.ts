@@ -1,5 +1,12 @@
 export default {
   promptInjection: {
+    wholeInput: '将最新一条用户消息的文字整体替换（保留图片和工具结果）',
+    replacementText: '替换后的文字（留空表示删除）', previewText: '本地替换预览（不会调用模型）',
+    events: '处理诊断记录', eventsHint: '最近 100 条 HTTP 处理记录，保留约 7 天；不存提示词正文或密钥。入口处理状态与发送前文本核验分别展示。text_presence_verified 只表示发送前找到注入文本，不保证模型遵循指令；超过 128 KiB 或无副本的请求显示未核验。', eventStatus: '处理状态', eventBytes: '请求字节数（前 → 后）',
+    policyAction: '规则操作', matchText: '要匹配的文字（精确匹配）', matchRequired: '请输入要匹配的文字',
+    actionAppend: '追加指令', actionSystem: '替换已有 System', actionInput: '替换用户输入文字', actionOutput: '替换模型输出文字',
+    policyActions: { append: '追加指令', replace_system: '替换 System', replace_input: '输入文字替换', replace_output: '输出文字替换' },
+    replacementHint: '按分组生效。文本替换不使用正则，替换内容留空表示删除；保留工具参数和用量。支持 Chat/Responses/Messages 的 HTTP 非流式与 SSE；暂不支持原生 Gemini、WebSocket 输出替换或多候选 n>1。System 替换会移除原 System/Responses instructions，保留 Developer。',
     title: '提示词注入管理',
     description: '把统一的 System、Developer 或 User 指令注入到指定分组的全部模型请求中。',
     addRule: '新增注入规则',

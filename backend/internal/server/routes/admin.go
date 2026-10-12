@@ -121,6 +121,12 @@ func RegisterAdminRoutes(
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h, settingService)
 		registerChannelMonitorV2Routes(admin, h, settingService)
+		quality := admin.Group("/quality-tests")
+		quality.GET("/configs", h.GroupQuality.Configs)
+		quality.PUT("/groups/:id/config", h.GroupQuality.SaveConfig)
+		quality.GET("/groups/:id/runs", h.GroupQuality.History)
+		quality.POST("/groups/:id/runs", h.GroupQuality.Start)
+		quality.GET("/runs/:id", h.GroupQuality.Detail)
 
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
@@ -140,6 +146,7 @@ func registerPromptInjectionRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 	promptInjections := admin.Group("/prompt-injections")
 	{
 		promptInjections.GET("", h.Admin.Setting.GetPromptInjections)
+		promptInjections.GET("/events", h.Admin.Setting.GetManagedPolicyEvents)
 		promptInjections.PUT("", h.Admin.Setting.UpdatePromptInjections)
 	}
 }

@@ -1,0 +1,111 @@
+import { mount, flushPromises } from '@vue/test-utils'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import GroupQualityDialog from './GroupQualityDialog.vue'
+import type { QualityConfig, QualityRun } from '@/api/groupQuality'
+
+const mocks = vi.hoisted(() => ({ history: vi.fn(), detail: vi.fn(), start: vi.fn() }))
+vi.mock('@/api/groupQuality', () => ({ qualityHistory: mocks.history, qualityDetail: mocks.detail, startQualityTest: mocks.start }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (s: string) => s }) }))
+const config: QualityConfig = { group_id: 1, group_name: 'Test', platform: 'openai', enabled: true, models: ['gpt-6-astra', 'gpt-6-sol'], available_models: ['gpt-6-astra', 'gpt-6-sol'], customer_access: 'view', api_mode: 'responses', cooldown_seconds: 600, version: 1 }
+const run: QualityRun = { id: 1, group_id: 1, model: 'gpt-6-astra', status: 'completed', started_at: '2026-10-10T00:00:00Z', finished_at: '2026-10-10T00:00:01Z', deadline_at: '2026-10-10T00:06:00Z', duration_ms: 1000, response_length: 99, input_tokens: 12, output_tokens: 30, source: '<html><body><svg></svg><script>window.test=true</script></body></html>' }
+const options = { global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Select: { template: '<div />' } } } }
+beforeEach(() => { vi.resetAllMocks(); localStorage.clear(); Object.defineProperty(document, 'hidden', { configurable: true, value: false }); mocks.history.mockResolvedValue([{ ...run, source: undefined }]); mocks.detail.mockResolvedValue(run) })
+afterEach(() => { vi.useRealTimers() })
+describe('quality dialog', () => {
+  it('retries a completed artifact after its source request fails once', async () => {
+    mocks.detail.mockRejectedValueOnce(new Error('network glitch')).mockResolvedValue(run)
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    expect(wrapper.find('iframe').exists()).toBe(false)
+    await wrapper.findAll('button').find(b => b.text() === 'groupQuality.refresh')!.trigger('click')
+    await flushPromises()
+    expect(mocks.detail).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('iframe').exists()).toBe(true)
+    wrapper.unmount()
+  })
+  it('recovers from a temporary failed poll with backoff and never creates a new job', async () => {
+    vi.useFakeTimers()
+    const running = { ...run, status: 'running' as const, source: undefined }
+    mocks.history.mockResolvedValueOnce([running]).mockRejectedValueOnce(new Error('network glitch')).mockResolvedValue([running])
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(mocks.history).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(10000)
+    await flushPromises()
+    expect(mocks.history).toHaveBeenCalledTimes(3)
+    expect(mocks.start).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('aborts pending source loading on close and never schedules a stale poll', async () => {
+    vi.useFakeTimers()
+    mocks.history.mockResolvedValue([{ ...run, source: undefined }, { ...run, id: 2, status: 'running', source: undefined }])
+    let resolve!: (value: QualityRun) => void
+    mocks.detail.mockImplementation(() => new Promise<QualityRun>(r => { resolve = r }))
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    const signal = mocks.detail.mock.calls[0][2] as AbortSignal
+    await wrapper.setProps({ show: false })
+    expect(signal.aborted).toBe(true)
+    resolve(run)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(mocks.history).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+  it('uses the saved polling interval and supports manual-only mode', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('group-quality-poll-seconds', '30')
+    mocks.history.mockResolvedValue([{ ...run, status: 'running', source: undefined }])
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(29000)
+    expect(mocks.history).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(mocks.history).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+    localStorage.setItem('group-quality-poll-seconds', '0')
+    const manual = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    const count = mocks.history.mock.calls.length
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(mocks.history).toHaveBeenCalledTimes(count)
+    manual.unmount()
+  })
+  it('bounds retries and stops immediately when access is revoked', async () => {
+    vi.useFakeTimers()
+    mocks.history.mockRejectedValue(new Error('offline'))
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(90000)
+    expect(mocks.history).toHaveBeenCalledTimes(3)
+    wrapper.unmount()
+    mocks.history.mockClear().mockRejectedValue({ status: 403, message: 'revoked' })
+    const denied = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(90000)
+    expect(mocks.history).toHaveBeenCalledTimes(1)
+    denied.unmount()
+  })
+  it('allows customers to view but not run and renders only in an opaque sandbox', async () => {
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await flushPromises()
+    expect(wrapper.find('iframe').attributes('sandbox')).toBe('allow-scripts')
+    expect(wrapper.find('iframe').attributes('referrerpolicy')).toBe('no-referrer')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('Content-Security-Policy')
+    expect(wrapper.findAll('button').some(b => b.text() === 'groupQuality.start')).toBe(false)
+    expect(wrapper.find('svg').exists()).toBe(false)
+    expect(mocks.start).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('does not submit another test during cooldown', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-10T00:00:20Z'))
+    const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config: { ...config, customer_access: 'run' }, admin: false } })
+    await flushPromises()
+    const button = wrapper.findAll('button').find(b => b.text() === 'groupQuality.start')!
+    expect(button.attributes('disabled')).toBeDefined()
+    await button.trigger('click'); expect(mocks.start).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+})

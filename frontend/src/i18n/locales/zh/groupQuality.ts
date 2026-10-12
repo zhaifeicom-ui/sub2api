@@ -1,0 +1,27 @@
+export default {
+  groupQuality: {
+    title: '降智检测', description: '按渠道状态分组配置鹈鹕动画测试与客户权限。仅供质量观察，不自动判定降智。',
+    direct: '直测 API 上游 · 不经过分组注入或用户计费', warning: '生成完成不等于“不降智”。请比较图形结构、动作协调性和历史结果。检测会消耗上游额度。',
+    search: '搜索分组', group: '渠道状态分组', enabled: '启用检测', models: '检测模型', access: '客户权限',
+    hidden: '仅管理员', view: '客户仅查看结果', run: '客户可查看并发起检测', protocol: '上游协议', account: '检测上游账号',
+    auto: '自动选择可调度账号', cooldown: '冷却时间（分钟）', edit: '配置', test: '降智检测', save: '保存配置',
+    cancel: '取消', refresh: '刷新', unsupported: '暂无支持该模型的可调度 API Key 账号', unavailable: '不可测',
+    empty: '暂无分组', noHistory: '当前模型暂无检测记录', history: '最近 5 次检测', start: '开始检测',
+    running: '生成中', completed: '生成完成 · 待人工评估', failed: '检测失败', viewSource: '查看源码', preview: '预览',
+    copy: '复制源码', copied: '已复制', copyFailed: '复制失败，请手动复制源码', duration: '耗时', length: '响应字符',
+    started: '开始', finished: '结束', usage: 'Token 用量', selectedAccount: '上游账号 ID', mappedModel: '实际请求模型',
+    coolHint: '任务全站单并发，最长 5 分钟；结束后按配置冷却。关闭弹窗不会取消已发出的请求。',
+    remaining: '冷却剩余 {seconds} 秒', noArtifact: '选择一条已完成记录查看动画', saved: '检测配置已保存',
+    reloadConfig: '配置或权限可能已变化，请关闭弹窗并刷新', customerHint: '客户只能访问自己有权限的分组；默认不开放。',
+    sourceHint: '生成内容在不共享登录状态的沙箱中展示，外部资源和网络请求受限制。',
+    availabilityHint: '仅支持 OpenAI 平台的 API Key 上游。模型映射按账号配置执行，记录会注明实际请求模型。',
+    invalidModels: '至少选择一个检测模型', pending: '正在加载',
+    pollInterval: '结果刷新间隔', manualPoll: '仅手动刷新', pollSeconds: '{seconds} 秒',
+    pollHint: '只查询已提交任务的状态，不会重复调用模型；页面隐藏时暂停自动刷新。',
+    retryStopped: '连续失败，自动刷新已暂停，请手动刷新重试。',
+    autoDetection: '定时调用模型检测', autoInterval: '模型检测间隔（分钟，默认 10 分钟）',
+    autoEvery: '自动检测：每 {minutes} 分钟', autoOff: '自动检测已关闭', intervalMinutes: '{minutes} 分钟',
+    autoCostHint: '默认关闭；开启后每个选中模型分别按此间隔调用，会消耗上游额度。全站串行，不补跑错过的次数；忙时延后，失败等下一周期。保存配置后从所选间隔重新计时。检测冷却时间可能使实际间隔更长。',
+    scheduledRun: '定时检测', manualRun: '手动检测',
+  }
+}

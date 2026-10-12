@@ -503,6 +503,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/channels/quality-tests',
+    name: 'AdminGroupQuality',
+    component: () => import('@/views/admin/GroupQualityView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Quality tests', titleKey: 'groupQuality.title', descriptionKey: 'groupQuality.description' }
+  },
+  {
     path: '/monitor',
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),

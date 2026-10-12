@@ -1,0 +1,27 @@
+export default {
+  groupQuality: {
+    title: 'Quality tests', description: 'Configure pelican animation tests and customer access by channel-status group. No automatic degradation verdict.',
+    direct: 'Direct API upstream test · bypasses group injection and user billing', warning: 'A completed artifact does not prove normal model quality. Compare geometry, animation and historical outputs. Tests consume upstream quota.',
+    search: 'Search groups', group: 'Channel-status group', enabled: 'Enable testing', models: 'Test models', access: 'Customer access',
+    hidden: 'Administrators only', view: 'Customers can view results', run: 'Customers can view and run tests', protocol: 'Upstream protocol', account: 'Upstream account',
+    auto: 'Select a schedulable account automatically', cooldown: 'Cooldown (minutes)', edit: 'Configure', test: 'Quality test', save: 'Save configuration',
+    cancel: 'Cancel', refresh: 'Refresh', unsupported: 'No schedulable API-key account supports this model', unavailable: 'Unavailable',
+    empty: 'No groups', noHistory: 'No tests for this model yet', history: 'Latest 5 tests', start: 'Run test',
+    running: 'Generating', completed: 'Completed · manual review required', failed: 'Test failed', viewSource: 'Source', preview: 'Preview',
+    copy: 'Copy source', copied: 'Copied', copyFailed: 'Copy failed; copy the source manually', duration: 'Duration', length: 'Response characters',
+    started: 'Started', finished: 'Finished', usage: 'Token usage', selectedAccount: 'Upstream account ID', mappedModel: 'Upstream model',
+    coolHint: 'One test globally, 5-minute timeout, configured cooldown after completion. Closing the dialog does not cancel an upstream request.',
+    remaining: '{seconds}s cooldown remaining', noArtifact: 'Select a completed test to preview', saved: 'Configuration saved',
+    reloadConfig: 'Configuration or permissions may have changed. Close and refresh.', customerHint: 'Customers may only access their authorized groups. Hidden by default.',
+    sourceHint: 'Artifacts run in a sandbox without your login state. External resources and network requests are restricted.',
+    availabilityHint: 'OpenAI API-key upstreams only. Account model mappings apply and the actual upstream model is recorded.',
+    invalidModels: 'Select at least one test model', pending: 'Loading',
+    pollInterval: 'Result refresh interval', manualPoll: 'Manual refresh only', pollSeconds: '{seconds}s',
+    pollHint: 'Only queries existing jobs, never submits another model request. Paused while the page is hidden.',
+    retryStopped: 'Repeated failures paused automatic refresh. Refresh manually to retry.',
+    autoDetection: 'Scheduled model calls', autoInterval: 'Model test interval (minutes, default 10)',
+    autoEvery: 'Auto: every {minutes} minutes', autoOff: 'Automatic testing off', intervalMinutes: '{minutes} minutes',
+    autoCostHint: 'Off by default. Each selected model consumes upstream quota at this interval. Tests are serialized; missed cycles are not replayed. Busy jobs wait; failures wait until the next cycle. Saving restarts the interval. Cooldown may lengthen the actual interval.',
+    scheduledRun: 'Scheduled test', manualRun: 'Manual test',
+  }
+}
