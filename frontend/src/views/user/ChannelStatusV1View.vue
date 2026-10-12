@@ -16,7 +16,10 @@
       :countdown-seconds="countdown"
       :loading="loading"
       :detail-cache="detailCache"
+      :quality-by-monitor="qualityByMonitor"
+      :is-admin="authStore.isAdmin"
       @card-click="openDetail"
+      @quality-click="openQuality"
     />
 
     <MonitorDetailDialog
@@ -25,12 +28,14 @@
       :title="detailTitle"
       @close="closeDetail"
     />
-    <GroupQualityStatusEntries />
+    <GroupQualityDialog v-if="qualityTarget" :show="true" :config="qualityTarget" :admin="authStore.isAdmin" @close="qualityTarget = null" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import GroupQualityStatusEntries from '@/components/quality/GroupQualityStatusEntries.vue'
+import GroupQualityDialog from '@/components/quality/GroupQualityDialog.vue'
+import { qualityConfigs, type QualityConfig } from '@/api/groupQuality'
+import { useAuthStore } from '@/stores/auth'
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -53,6 +58,7 @@ import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 // ── State ──
 const items = ref<UserMonitorView[]>([])
@@ -61,6 +67,8 @@ const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
+const qualityByMonitor = ref<Record<number, QualityConfig>>({})
+const qualityTarget = ref<QualityConfig | null>(null)
 
 let abortController: AbortController | null = null
 
@@ -111,6 +119,18 @@ async function reload(silent = false) {
   }
 }
 
+async function loadQualityConfigs() {
+  try {
+    qualityByMonitor.value = Object.fromEntries(
+      (await qualityConfigs(authStore.isAdmin))
+        .filter(c => c.enabled && c.available_models.length > 0)
+        .map(c => [c.monitor_id, c]),
+    )
+  } catch {
+    qualityByMonitor.value = {}
+  }
+}
+
 async function manualReload() {
   await reload(false)
   // After base reload, refresh any cached detail records so non-7d availability
@@ -150,6 +170,10 @@ function closeDetail() {
   detailTarget.value = null
 }
 
+function openQuality(monitorID: number) {
+  qualityTarget.value = qualityByMonitor.value[monitorID] ?? null
+}
+
 watch(items, () => {
   void ensureDetailsForWindow()
 })
@@ -164,6 +188,7 @@ watch(
 
 onMounted(() => {
   void reload(false)
+  void loadQualityConfigs()
   if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
     autoRefresh.setEnabled(autoRefresh.enabled.value)
   }

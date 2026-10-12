@@ -122,11 +122,13 @@ func RegisterAdminRoutes(
 		registerChannelMonitorRoutes(admin, h, settingService)
 		registerChannelMonitorV2Routes(admin, h, settingService)
 		quality := admin.Group("/quality-tests")
-		quality.GET("/configs", h.GroupQuality.Configs)
-		quality.PUT("/groups/:id/config", h.GroupQuality.SaveConfig)
-		quality.GET("/groups/:id/runs", h.GroupQuality.History)
-		quality.POST("/groups/:id/runs", h.GroupQuality.Start)
-		quality.GET("/runs/:id", h.GroupQuality.Detail)
+		quality.GET("/channels/configs", h.ChannelQuality.Configs)
+		quality.POST("/channels/configs", h.ChannelQuality.SaveConfig)
+		quality.PUT("/channels/:id/config", h.ChannelQuality.SaveConfig)
+		quality.DELETE("/channels/:id/config", h.ChannelQuality.DeleteConfig)
+		quality.GET("/channels/:id/runs", h.ChannelQuality.History)
+		quality.POST("/channels/:id/runs", h.ChannelQuality.Start)
+		quality.GET("/channel-runs/:id", h.ChannelQuality.Detail)
 
 		// 风控中心
 		registerContentModerationRoutes(admin, h)

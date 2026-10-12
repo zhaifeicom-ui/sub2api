@@ -1,9 +1,9 @@
 <template>
-  <button
-    type="button"
-    class="group text-left p-5 rounded-2xl min-h-[280px] w-full bg-white/70 backdrop-blur-xl border border-gray-200/80 shadow-card dark:bg-dark-800/60 dark:border-dark-700/70 hover:-translate-y-1 hover:shadow-card-hover dark:hover:border-primary-500/30 hover:border-gray-300 transition-all duration-300 ease-out flex flex-col"
-    @click="emit('click')"
+  <article
+    class="group relative text-left p-5 rounded-2xl min-h-[280px] w-full bg-white/70 backdrop-blur-xl border border-gray-200/80 shadow-card dark:bg-dark-800/60 dark:border-dark-700/70 hover:-translate-y-1 hover:shadow-card-hover dark:hover:border-primary-500/30 hover:border-gray-300 transition-all duration-300 ease-out flex flex-col"
   >
+    <button class="absolute inset-0 z-0 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500" type="button" :aria-label="`${t('channelStatus.detailTitle')}: ${item.name}`" @click="emit('click')"></button>
+    <div class="pointer-events-none relative z-10 flex flex-1 flex-col">
     <!-- Header: icon + name/model + status chip -->
     <div class="flex items-start gap-3">
       <span
@@ -73,7 +73,17 @@
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
     />
-  </button>
+    </div>
+    <button
+      v-if="qualityEnabled"
+      type="button"
+      class="relative z-20 mt-4 inline-flex self-start items-center gap-1.5 rounded-lg border border-primary-200 bg-white/90 px-2.5 py-1 text-xs font-semibold text-primary-700 shadow-sm hover:bg-primary-50 dark:border-primary-800 dark:bg-dark-800 dark:text-primary-300 dark:hover:bg-primary-900/30"
+      @click.stop="emit('qualityClick')"
+    >
+      <Icon name="play" size="xs" />
+      {{ t('groupQuality.test') }}
+    </button>
+  </article>
 </template>
 
 <script setup lang="ts">
@@ -90,6 +100,7 @@ import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
 import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 // 图标配色与 utils/platformColors.ts 的平台色对齐（新 4 家）。
 const PROVIDER_TINT: Record<string, string> = {
@@ -109,10 +120,12 @@ const props = defineProps<{
   window: '7d' | '15d' | '30d'
   availabilityValue: number | null
   countdownSeconds: number
+  qualityEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'click'): void
+  (e: 'qualityClick'): void
 }>()
 
 const { t } = useI18n()

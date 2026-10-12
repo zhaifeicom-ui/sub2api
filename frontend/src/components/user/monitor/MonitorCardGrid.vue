@@ -42,7 +42,9 @@
         :window="window"
         :availability-value="resolveAvailability(item)"
         :countdown-seconds="countdownSeconds"
+        :quality-enabled="qualityByMonitor[item.id]?.enabled && (isAdmin || qualityByMonitor[item.id]?.customer_access !== 'hidden')"
         @click="emit('cardClick', item)"
+        @quality-click="emit('qualityClick', item.id)"
       />
     </div>
   </div>
@@ -53,17 +55,24 @@ import { useI18n } from 'vue-i18n'
 import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
+import type { QualityConfig } from '@/api/groupQuality'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: UserMonitorView[]
   window: '7d' | '15d' | '30d'
   countdownSeconds: number
   loading: boolean
   detailCache: Record<number, UserMonitorDetail>
-}>()
+  qualityByMonitor?: Record<number, QualityConfig>
+  isAdmin?: boolean
+}>(), {
+  qualityByMonitor: () => ({}),
+  isAdmin: false,
+})
 
 const emit = defineEmits<{
   (e: 'cardClick', item: UserMonitorView): void
+  (e: 'qualityClick', monitorID: number): void
 }>()
 
 const { t } = useI18n()

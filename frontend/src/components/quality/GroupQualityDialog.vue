@@ -1,46 +1,52 @@
 <template>
-  <BaseDialog :show="show" :title="`${t('groupQuality.title')} · ${config.group_name}`" width="extra-wide" @close="emit('close')">
-    <div class="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ t('groupQuality.warning') }}</div>
-    <p class="mb-4 text-xs text-gray-500">{{ t('groupQuality.direct') }}</p>
-    <div class="grid min-h-[420px] gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside class="space-y-3">
-        <label class="block text-xs text-gray-500">{{ t('groupQuality.models') }}</label>
-        <Select v-model="model" :options="modelOptions" :disabled="starting" />
-        <button v-if="canRun" class="btn btn-primary w-full" :disabled="!canStart" @click="start">{{ starting ? t('groupQuality.pending') : t('groupQuality.start') }}</button>
+  <BaseDialog :show="show" :title="`${t('groupQuality.title')} · ${config.monitor_name}`" width="extra-wide" @close="emit('close')">
+    <div class="grid min-h-[430px] gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
+      <aside class="flex min-w-0 flex-col gap-3">
+        <label class="input-label" for="quality-model">{{ t('groupQuality.models') }}</label>
+        <Select id="quality-model" v-model="model" :options="modelOptions" :disabled="starting || !modelOptions.length" />
+        <button v-if="canRun" class="btn btn-primary w-full" :disabled="!canStart" @click="start">
+          {{ starting ? t('groupQuality.pending') : t('groupQuality.start') }}
+        </button>
         <p v-if="remaining > 0" class="text-xs text-amber-600">{{ t('groupQuality.remaining', { seconds: remaining }) }}</p>
-        <p v-if="!supported" class="text-xs text-gray-500">{{ t('groupQuality.unsupported') }}</p>
-        <p class="text-xs leading-relaxed text-gray-500">{{ t('groupQuality.coolHint') }}</p>
-        <label class="block text-xs text-gray-500">{{ t('groupQuality.pollInterval') }}</label>
-        <Select v-model="pollSeconds" :options="pollOptions" />
-        <p class="text-xs text-gray-500">{{ t('groupQuality.pollHint') }}</p>
-        <div class="flex items-center justify-between text-xs text-gray-500">
+        <p v-else-if="!canRun" class="text-xs text-gray-500">{{ t('groupQuality.viewOnly') }}</p>
+        <p v-else-if="!supported" class="text-xs text-gray-500">{{ t('groupQuality.unsupported') }}</p>
+        <p class="text-xs leading-relaxed text-gray-500">{{ t('groupQuality.channelKeyHint') }}</p>
+
+        <div class="mt-1 flex items-center justify-between text-xs font-medium text-gray-500">
           <span>{{ t('groupQuality.history') }}</span>
           <button class="btn btn-secondary btn-sm" :disabled="loading" @click="manualRefresh">{{ t('groupQuality.refresh') }}</button>
         </div>
         <p v-if="loading && !runs.length" class="text-xs text-gray-500">{{ t('groupQuality.pending') }}</p>
         <p v-else-if="!runs.length" class="text-xs text-gray-500">{{ t('groupQuality.noHistory') }}</p>
-        <button v-for="run in runs" :key="run.id" class="w-full rounded-xl border p-3 text-left transition-colors dark:border-dark-600" :class="selectedId === run.id ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 hover:bg-gray-50 dark:hover:bg-dark-700'" @click="selectRun(run)">
-          <span class="badge" :class="run.status === 'failed' ? 'badge-danger' : run.status === 'running' ? 'badge-warning' : 'badge-success'">{{ statusLabel(run.status) }}</span>
-          <p class="mt-2 text-xs text-gray-500">{{ date(run.started_at) }}</p>
-          <p class="mt-1 text-xs text-gray-500">{{ run.automatic ? t('groupQuality.scheduledRun') : t('groupQuality.manualRun') }}</p>
-          <p class="mt-1 text-xs text-gray-500">{{ (run.duration_ms / 1000).toFixed(1) }}s · {{ run.response_length.toLocaleString() }} {{ t('groupQuality.length') }}</p>
+        <button
+          v-for="run in runs"
+          :key="run.id"
+          class="w-full rounded-xl border p-3 text-left transition-colors dark:border-dark-600"
+          :class="selectedId === run.id ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 hover:bg-gray-50 dark:hover:bg-dark-700'"
+          @click="selectRun(run)"
+        >
+          <span class="flex items-center justify-between gap-2">
+            <span class="badge" :class="run.status === 'failed' ? 'badge-danger' : run.status === 'running' ? 'badge-warning' : 'badge-success'">{{ statusLabel(run.status) }}</span>
+            <span class="text-[11px] text-gray-500">{{ time(run.started_at) }}</span>
+          </span>
+          <p class="mt-2 text-xs text-gray-500">{{ run.model }} · {{ t('groupQuality.duration') }} {{ (run.duration_ms / 1000).toFixed(1) }}s</p>
+          <p class="mt-1 text-xs text-gray-500">{{ t('groupQuality.responseLength') }} {{ run.response_length.toLocaleString() }}</p>
         </button>
       </aside>
+
       <section class="min-w-0 space-y-3">
         <div v-if="selected" class="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-          <span>{{ selected.model }} · {{ t('groupQuality.duration') }} {{ (selected.duration_ms / 1000).toFixed(1) }}s</span>
+          <div class="flex flex-wrap gap-x-4 gap-y-1">
+            <strong class="text-gray-800 dark:text-gray-200">{{ selected.model }}</strong>
+            <span>{{ time(selected.started_at) }} → {{ selected.finished_at ? time(selected.finished_at) : t('groupQuality.running') }}</span>
+            <span>{{ t('groupQuality.duration') }} {{ (selected.duration_ms / 1000).toFixed(1) }}s</span>
+          </div>
           <div v-if="selected.source" class="flex gap-2">
             <button class="btn btn-secondary btn-sm" @click="showSource = !showSource">{{ showSource ? t('groupQuality.preview') : t('groupQuality.viewSource') }}</button>
             <button class="btn btn-secondary btn-sm" @click="copySource">{{ t('groupQuality.copy') }}</button>
           </div>
         </div>
-        <div v-if="selected && admin" class="flex flex-wrap gap-3 text-xs text-gray-500">
-          <span>{{ t('groupQuality.selectedAccount') }}: {{ selected.account_id ?? '—' }}</span>
-          <span>{{ t('groupQuality.mappedModel') }}: {{ selected.upstream_model || '—' }}</span>
-        </div>
-        <div v-if="selected" class="flex flex-wrap gap-3 text-xs text-gray-500">
-          <span>{{ t('groupQuality.started') }}: {{ date(selected.started_at) }}</span>
-          <span>{{ t('groupQuality.finished') }}: {{ selected.finished_at ? date(selected.finished_at) : '—' }}</span>
+        <div v-if="selected" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
           <span>{{ t('groupQuality.usage') }}: {{ selected.input_tokens }} / {{ selected.output_tokens }}</span>
           <span v-if="selected.prompt_version">{{ selected.prompt_version }}</span>
         </div>
@@ -78,14 +84,20 @@ const loading = ref(false)
 const starting = ref(false)
 const showSource = ref(false)
 const now = ref(Date.now())
-const pollValues = [0, 3, 5, 10, 30, 60]
-const pollStorageKey = 'group-quality-poll-seconds'
-function readPollSeconds() {
-  try { const raw = localStorage.getItem(pollStorageKey); const value = raw === null ? 5 : Number(raw); return pollValues.includes(value) ? value : 5 }
-  catch { return 5 }
-}
-const pollSeconds = ref(readPollSeconds())
-const pollOptions = computed(() => pollValues.map(value => ({ value, label: value === 0 ? t('groupQuality.manualPoll') : t('groupQuality.pollSeconds', { seconds: value }) })))
+const cooldownSeconds = computed(() => props.config.cooldown_seconds || 600)
+const modelOptions = computed(() => props.config.available_models.filter(value => props.config.models.includes(value as QualityModel)).map(value => ({ value, label: value })))
+const supported = computed(() => props.config.available_models.includes(model.value) && props.config.models.includes(model.value))
+const canRun = computed(() => props.config.enabled && (props.admin || props.config.customer_access === 'run'))
+const remaining = computed(() => {
+  const last = runs.value[0]
+  if (!last || last.status === 'running') return 0
+  return Math.max(0, Math.ceil((Date.parse(last.finished_at || last.deadline_at) + cooldownSeconds.value * 1000 - now.value) / 1000))
+})
+const canStart = computed(() => canRun.value && supported.value && !loading.value && !starting.value && remaining.value === 0 && !runs.value.some(r => r.status === 'running'))
+const preview = computed(() => selected.value?.source ? qualityPreviewDocument(selected.value.source) : '')
+const time = (value: string) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const statusLabel = (status: string) => t(`groupQuality.${status}`)
+
 let generation = 0
 let historySequence = 0
 let detailSequence = 0
@@ -94,19 +106,6 @@ let historyController: AbortController | undefined
 let detailController: AbortController | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let clock: ReturnType<typeof setInterval> | undefined
-const modelOptions = computed(() => props.config.models.map(value => ({ value, label: value })))
-const supported = computed(() => props.config.available_models.includes(model.value))
-const canRun = computed(() => props.config.enabled && (props.admin || props.config.customer_access === 'run'))
-const remaining = computed(() => {
-  const last = runs.value[0]
-  if (!last || last.status === 'running') return 0
-  return Math.max(0, Math.ceil((Date.parse(last.finished_at || last.deadline_at) + props.config.cooldown_seconds * 1000 - now.value) / 1000))
-})
-const canStart = computed(() => canRun.value && supported.value && !loading.value && !starting.value && remaining.value === 0 && !runs.value.some(r => r.status === 'running'))
-const preview = computed(() => selected.value?.source ? qualityPreviewDocument(selected.value.source) : '')
-const date = (s: string) => new Date(s).toLocaleString()
-const statusLabel = (status: string) => t(`groupQuality.${status}`)
-
 function stopRequests() {
   clearTimeout(timer)
   historySequence++; detailSequence++
@@ -118,10 +117,9 @@ function terminalError(e: unknown) {
 }
 function schedule(token: number, retry = false) {
   clearTimeout(timer)
-  if (token !== generation || !props.show || document.hidden || pollSeconds.value === 0) return
+  if (token !== generation || !props.show || document.hidden) return
   if (retry && failures >= 3) { error.value += ` ${t('groupQuality.retryStopped')}`; return }
-  const delay = retry ? Math.min(60000, pollSeconds.value * 1000 * 2 ** failures) : pollSeconds.value * 1000
-  timer = setTimeout(() => void refresh(), delay)
+  timer = setTimeout(() => void refresh(), retry ? Math.min(60000, 5000 * 2 ** failures) : 5000)
 }
 async function selectRun(run: QualityRun): Promise<boolean> {
   if (!props.show) return false
@@ -157,7 +155,7 @@ async function refresh() {
   clearTimeout(timer)
   loading.value = true
   try {
-    const result = await qualityHistory(props.admin, props.config.group_id, model.value, controller.signal)
+    const result = await qualityHistory(props.admin, props.config.monitor_id, model.value, controller.signal)
     if (token !== generation || sequence !== historySequence || !props.show || controller.signal.aborted) return
     runs.value = result
     error.value = ''
@@ -184,7 +182,7 @@ async function start() {
   starting.value = true
   error.value = ''
   try {
-    const run = await startQualityTest(props.admin, props.config.group_id, model.value)
+    const run = await startQualityTest(props.admin, props.config.monitor_id, model.value)
     if (token !== generation || !props.show) return
     selectedId.value = run.id
     selected.value = run
@@ -200,13 +198,13 @@ async function copySource() {
   try { await navigator.clipboard.writeText(selected.value?.source || ''); app.showSuccess(t('groupQuality.copied')) }
   catch { app.showError(t('groupQuality.copyFailed')) }
 }
-watch(() => [props.show, props.config.group_id] as const, () => {
+watch(() => [props.show, props.config.monitor_id] as const, () => {
   generation++
   stopRequests(); failures = 0
   clearInterval(clock)
   runs.value = []; selected.value = null; selectedId.value = null; error.value = ''; loading.value = false; starting.value = false
   if (props.show) {
-    model.value = props.config.models[0] || 'gpt-6-astra'
+    model.value = (modelOptions.value[0]?.value as QualityModel) || 'gpt-6-astra'
     now.value = Date.now()
     clock = setInterval(() => { now.value = Date.now() }, 1000)
     void refresh()
@@ -216,15 +214,9 @@ watch(model, () => {
   generation++; stopRequests(); failures = 0; loading.value = false; starting.value = false; runs.value = []; selected.value = null; selectedId.value = null
   if (props.show) void refresh()
 })
-watch(pollSeconds, value => {
-  if (!pollValues.includes(value)) { pollSeconds.value = 5; return }
-  try { localStorage.setItem(pollStorageKey, String(value)) } catch { /* Private browsing may disable storage. */ }
-  clearTimeout(timer)
-  if (props.show && !loading.value && runs.value.some(r => r.status === 'running')) schedule(generation)
-})
 function onVisibility() {
   if (document.hidden) clearTimeout(timer)
-  else if (props.show && pollSeconds.value > 0 && !loading.value && failures < 3 && (runs.value.some(r => r.status === 'running') || (selected.value?.status === 'completed' && !selected.value.source))) void refresh()
+  else if (props.show && !loading.value && failures < 3 && (runs.value.some(r => r.status === 'running') || (selected.value?.status === 'completed' && !selected.value.source))) void refresh()
 }
 document.addEventListener('visibilitychange', onVisibility)
 onBeforeUnmount(() => { generation++; stopRequests(); clearInterval(clock); document.removeEventListener('visibilitychange', onVisibility) })

@@ -975,7 +975,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
 	ProvideChannelMonitorV2Service,
-	ProvideGroupQualityService,
+	ProvideChannelQualityService,
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
@@ -1060,8 +1060,8 @@ func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingServ
 	return svc
 }
 
-func ProvideGroupQualityService(repo GroupQualityRepository, accounts AccountRepository, groups GroupRepository, upstream HTTPUpstream, cfg *config.Config, concurrency *ConcurrencyService, tls *TLSFingerprintProfileService) *GroupQualityService {
-	s := NewGroupQualityService(repo, accounts, groups, upstream, cfg, concurrency, tls)
+func ProvideChannelQualityService(repo ChannelQualityRepository, monitorService *ChannelMonitorService, upstream HTTPUpstream, cfg *config.Config) *ChannelQualityService {
+	s := NewChannelQualityService(repo, monitorService, upstream, cfg)
 	s.StartAutomatic()
 	return s
 }

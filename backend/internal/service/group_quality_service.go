@@ -326,7 +326,9 @@ func qualityErrorMessage(code string) string {
 	case "response_too_large":
 		return "输出超过检测大小限制"
 	case "upstream_http":
-		return "上游返回非成功状态；请在账号管理检查认证与额度"
+		return "上游返回非成功状态；请检查该渠道监控项的 Key、额度和请求配置"
+	case "channel_key_unavailable":
+		return "该渠道的 Key 无法读取，请到渠道监控重新保存 API Key"
 	case "invalid_artifact":
 		return "未生成完整 HTML/SVG，可能输出被截断；不代表已判定降智"
 	default:
