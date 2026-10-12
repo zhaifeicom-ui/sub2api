@@ -102,22 +102,13 @@ func NewChannelQualityService(repo ChannelQualityRepository, monitors *ChannelMo
 }
 
 func channelQualityModels(m *ChannelMonitor) []string {
-	if m == nil || m.Provider != "openai" || defaultCheckMode(m.CheckMode) == MonitorCheckModeQuota || m.APIKeyDecryptFailed {
+	if m == nil || !m.Enabled || m.Provider != "openai" || defaultCheckMode(m.CheckMode) == MonitorCheckModeQuota || m.APIKeyDecryptFailed || strings.TrimSpace(m.APIKey) == "" {
 		return []string{}
 	}
-	allowed := map[string]bool{}
-	for _, candidate := range append([]string{m.PrimaryModel}, m.ExtraModels...) {
-		if IsQualityModel(candidate) {
-			allowed[candidate] = true
-		}
-	}
-	models := make([]string, 0, 2)
-	for _, candidate := range []string{"gpt-6-astra", "gpt-6-sol"} {
-		if allowed[candidate] {
-			models = append(models, candidate)
-		}
-	}
-	return models
+	// PrimaryModel/ExtraModels configure health probes, not upstream access.
+	// Quality checks have their own fixed model whitelist and do not change
+	// the channel's existing health-check schedule or model configuration.
+	return []string{"gpt-6-astra", "gpt-6-sol"}
 }
 
 func ValidateChannelQualityConfig(c ChannelQualityConfig) error {

@@ -98,9 +98,8 @@ const autoMinutes = ref(10)
 const autoEnabled = computed({ get: () => draft.value?.auto_enabled ?? false, set: value => { if (draft.value) draft.value.auto_enabled = value } })
 const accessOptions = computed(() => ['hidden', 'view', 'run'].map(value => ({ value, label: t(`groupQuality.${value}`) })))
 const availableForMonitor = (monitor?: ChannelMonitor) => {
-  if (!monitor || monitor.provider !== 'openai' || monitor.check_mode === 'quota') return []
-  const models = new Set([monitor.primary_model, ...monitor.extra_models])
-  return QUALITY_MODELS.filter(model => models.has(model))
+  if (!monitor || !monitor.enabled || monitor.provider !== 'openai' || monitor.check_mode === 'quota') return []
+  return [...QUALITY_MODELS]
 }
 const monitorOptions = computed(() => monitors.value
   .filter(m => m.enabled && availableForMonitor(m).length && !configs.value.some(config => config.monitor_id === m.id))
