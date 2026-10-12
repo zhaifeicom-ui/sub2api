@@ -104,6 +104,9 @@ func managedOutputJSON(data []byte, rules []PromptInjectionRule, depth int) []by
 	if root.Get("type").String() == "response.output_text.done" {
 		paths = append(paths, "text")
 	}
+	if kind := root.Get("type").String(); (kind == "response.content_part.done" || kind == "response.content_part.added") && root.Get("part.type").String() == "output_text" {
+		paths = append(paths, "part.text")
+	}
 	if root.Get("content_block.type").String() == "text" {
 		paths = append(paths, "content_block.text")
 	}

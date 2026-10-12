@@ -42,6 +42,16 @@ func TestManagedWholeInputPreservesHistoryAndImages(t *testing.T) {
 	require.Equal(t, int64(2), gjson.GetBytes(out, "messages.2.content.#").Int())
 }
 
+func TestManagedResponsesContentPartCompletion(t *testing.T) {
+	rules := []PromptInjectionRule{{Action: "replace_output", Match: "upstream model name", Content: "SITE_NAME"}}
+	for _, kind := range []string{"response.content_part.done", "response.content_part.added"} {
+		raw, _ := json.Marshal(map[string]any{"type": kind, "part": map[string]any{"type": "output_text", "text": "upstream model name"}, "item_id": "unchanged"})
+		out := ManagedOutputJSON(raw, rules)
+		require.Equal(t, "SITE_NAME", gjson.GetBytes(out, "part.text").String())
+		require.Equal(t, "unchanged", gjson.GetBytes(out, "item_id").String())
+	}
+}
+
 func TestManagedOutputOnlyChangesAssistantText(t *testing.T) {
 	rules := []PromptInjectionRule{{Action: "replace_output", Match: "hello", Content: "你好"}}
 	raw := []byte(`{"choices":[{"message":{"role":"assistant","content":"hello","tool_calls":[{"id":"hello","function":{"name":"hello","arguments":"hello"}}]}}],"usage":{"prompt_tokens":10}}`)
