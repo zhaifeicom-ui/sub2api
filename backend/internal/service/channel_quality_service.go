@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,13 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/tidwall/gjson"
 )
+
+const channelQualityTimeout = 10 * time.Minute
+const channelQualityOutputTokens = 32768
+
+func isChannelQualityModel(model string) bool {
+	return model == "gpt-6-astra" || model == "gpt-6.1-sol"
+}
 
 var (
 	ErrChannelQualityInvalid  = infraerrors.BadRequest("CHANNEL_QUALITY_INVALID", "invalid channel quality-test configuration or model")
@@ -108,7 +116,7 @@ func channelQualityModels(m *ChannelMonitor) []string {
 	// PrimaryModel/ExtraModels configure health probes, not upstream access.
 	// Quality checks have their own fixed model whitelist and do not change
 	// the channel's existing health-check schedule or model configuration.
-	return []string{"gpt-6-astra", "gpt-6-sol"}
+	return []string{"gpt-6-astra", "gpt-6.1-sol"}
 }
 
 func ValidateChannelQualityConfig(c ChannelQualityConfig) error {
@@ -123,7 +131,7 @@ func ValidateChannelQualityConfig(c ChannelQualityConfig) error {
 	}
 	seen := map[string]bool{}
 	for _, model := range c.Models {
-		if !IsQualityModel(model) || seen[model] {
+		if !isChannelQualityModel(model) || seen[model] {
 			return ErrChannelQualityInvalid
 		}
 		seen[model] = true
@@ -193,7 +201,7 @@ func (s *ChannelQualityService) GetConfig(ctx context.Context, monitorID int64) 
 }
 
 func (s *ChannelQualityService) ListRuns(ctx context.Context, monitorID int64, model string) ([]ChannelQualityRun, error) {
-	if !IsQualityModel(model) {
+	if !isChannelQualityModel(model) && model != "gpt-6-sol" {
 		return nil, ErrChannelQualityInvalid
 	}
 	return s.repo.ListRuns(ctx, monitorID, model)
@@ -204,7 +212,7 @@ func (s *ChannelQualityService) GetRun(ctx context.Context, id int64) (*ChannelQ
 }
 
 func (s *ChannelQualityService) Start(ctx context.Context, monitorID, userID int64, model string, admin bool) (*ChannelQualityRun, error) {
-	if !IsQualityModel(model) {
+	if !isChannelQualityModel(model) {
 		return nil, ErrChannelQualityInvalid
 	}
 	cfg, err := s.repo.GetConfig(ctx, monitorID)
@@ -249,7 +257,7 @@ func containsString(values []string, target string) bool {
 }
 
 func (s *ChannelQualityService) execute(run ChannelQualityRun, monitor ChannelMonitor) {
-	ctx, cancel := context.WithTimeout(context.Background(), qualityTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), channelQualityTimeout)
 	defer cancel()
 	run.Status = "failed"
 	defer func() {
@@ -270,7 +278,7 @@ func (s *ChannelQualityService) execute(run ChannelQualityRun, monitor ChannelMo
 	run.InputTokens, run.OutputTokens = input, output
 	if err != nil {
 		run.ErrorCode = code
-		run.ErrorMessage = qualityErrorMessage(code)
+		run.ErrorMessage = channelQualityErrorMessage(code, err)
 		return
 	}
 	run.ResponseLength = utf8.RuneCountInString(text)
@@ -296,16 +304,17 @@ func (s *ChannelQualityService) call(ctx context.Context, monitor *ChannelMonito
 	if err != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.User != nil {
 		return "", 0, 0, "unsafe_endpoint", fmt.Errorf("invalid endpoint")
 	}
-	body := map[string]any{"model": model, "stream": false}
+	body := map[string]any{"model": model, "stream": true}
 	endpoint := buildOpenAIResponsesURL(base)
 	if defaultAPIMode(monitor.APIMode) == MonitorAPIModeResponses {
 		body["input"] = QualityPelicanPrompt
-		body["max_output_tokens"] = 16000
+		body["max_output_tokens"] = channelQualityOutputTokens
 		body["store"] = false
 	} else {
 		endpoint = buildOpenAIEndpointURL(base, "/v1/chat/completions")
 		body["messages"] = []map[string]string{{"role": "user", "content": QualityPelicanPrompt}}
-		body["max_completion_tokens"] = 16000
+		body["max_completion_tokens"] = channelQualityOutputTokens
+		body["stream_options"] = map[string]bool{"include_usage": true}
 	}
 	raw, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
@@ -318,21 +327,39 @@ func (s *ChannelQualityService) call(ctx context.Context, monitor *ChannelMonito
 		}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+monitor.APIKey)
 	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI)))
 	// Channel monitor IDs are positive and may collide with account IDs in the
 	// shared HTTP transport cache. Use a negative namespace for monitor probes.
 	resp, err := s.http.DoWithTLS(req, "", -monitor.ID, 1, nil)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", 0, 0, "timeout", err
+		}
 		return "", 0, 0, "request_failed", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", 0, 0, "upstream_http", fmt.Errorf("HTTP %d", resp.StatusCode)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		message := gjson.GetBytes(data, "error.message").String()
+		message = strings.ReplaceAll(message, monitor.APIKey, "***")
+		message = redactChannelQualityError(message)
+		return "", 0, 0, "upstream_http", fmt.Errorf("HTTP %d%s", resp.StatusCode, message)
 	}
+	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		text, input, output, code, err := readChannelQualityStream(ctx, resp.Body, defaultAPIMode(monitor.APIMode))
+		if err != nil {
+			err = fmt.Errorf("%s", strings.ReplaceAll(err.Error(), monitor.APIKey, "***"))
+		}
+		return text, input, output, code, err
+	}
+	// Some compatible upstreams ignore stream=true and return a JSON result.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, qualityMaxResponseBytes+1))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", 0, 0, "timeout", err
+		}
 		return "", 0, 0, "request_failed", err
 	}
 	if len(data) > qualityMaxResponseBytes {
@@ -357,12 +384,21 @@ func (s *ChannelQualityService) call(ctx context.Context, monitor *ChannelMonito
 				}
 			}
 		}
-		return text.String(), gjson.GetBytes(data, "usage.input_tokens").Int(), gjson.GetBytes(data, "usage.output_tokens").Int(), "", nil
+		input, output := gjson.GetBytes(data, "usage.input_tokens").Int(), gjson.GetBytes(data, "usage.output_tokens").Int()
+		if strings.TrimSpace(text.String()) == "" {
+			return "", input, output, "empty_output", fmt.Errorf("no visible output")
+		}
+		return text.String(), input, output, "", nil
 	}
 	if reason := gjson.GetBytes(data, "choices.0.finish_reason").String(); reason != "stop" {
 		return "", 0, 0, "invalid_response", fmt.Errorf("incomplete response")
 	}
-	return gjson.GetBytes(data, "choices.0.message.content").String(), gjson.GetBytes(data, "usage.prompt_tokens").Int(), gjson.GetBytes(data, "usage.completion_tokens").Int(), "", nil
+	text := gjson.GetBytes(data, "choices.0.message.content").String()
+	input, output := gjson.GetBytes(data, "usage.prompt_tokens").Int(), gjson.GetBytes(data, "usage.completion_tokens").Int()
+	if strings.TrimSpace(text) == "" {
+		return "", input, output, "empty_output", fmt.Errorf("no visible output")
+	}
+	return text, input, output, "", nil
 }
 
 func (s *ChannelQualityService) StartAutomatic() {

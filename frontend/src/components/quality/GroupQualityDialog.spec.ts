@@ -7,8 +7,8 @@ const mocks = vi.hoisted(() => ({ history: vi.fn(), detail: vi.fn(), start: vi.f
 vi.mock('@/api/groupQuality', () => ({ qualityHistory: mocks.history, qualityDetail: mocks.detail, startQualityTest: mocks.start }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (s: string) => s }) }))
-const config: QualityConfig = { group_id: 1, group_name: 'Test', platform: 'openai', enabled: true, models: ['gpt-6-astra', 'gpt-6-sol'], available_models: ['gpt-6-astra', 'gpt-6-sol'], customer_access: 'view', api_mode: 'responses', cooldown_seconds: 600, version: 1 }
-const run: QualityRun = { id: 1, group_id: 1, model: 'gpt-6-astra', status: 'completed', started_at: '2026-10-10T00:00:00Z', finished_at: '2026-10-10T00:00:01Z', deadline_at: '2026-10-10T00:06:00Z', duration_ms: 1000, response_length: 99, input_tokens: 12, output_tokens: 30, source: '<html><body><svg></svg><script>window.test=true</script></body></html>' }
+const config: QualityConfig = { monitor_id: 1, monitor_name: 'Test', provider: 'openai', enabled: true, models: ['gpt-6-astra', 'gpt-6.1-sol'], available_models: ['gpt-6-astra', 'gpt-6.1-sol'], customer_access: 'view', cooldown_seconds: 600, version: 1 }
+const run: QualityRun = { id: 1, monitor_id: 1, monitor_name: 'Test', api_mode: 'responses', model: 'gpt-6-astra', status: 'completed', started_at: '2026-10-10T00:00:00Z', finished_at: '2026-10-10T00:00:01Z', deadline_at: '2026-10-10T00:11:00Z', duration_ms: 1000, response_length: 99, input_tokens: 12, output_tokens: 30, source: '<html><body><svg></svg><script>window.test=true</script></body></html>' }
 const options = { global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Select: { template: '<div />' } } } }
 beforeEach(() => { vi.resetAllMocks(); localStorage.clear(); Object.defineProperty(document, 'hidden', { configurable: true, value: false }); mocks.history.mockResolvedValue([{ ...run, source: undefined }]); mocks.detail.mockResolvedValue(run) })
 afterEach(() => { vi.useRealTimers() })
@@ -54,24 +54,18 @@ describe('quality dialog', () => {
     expect(mocks.history).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
-  it('uses the saved polling interval and supports manual-only mode', async () => {
+  it('keeps a 167-second generation visible and polls without resubmitting it', async () => {
     vi.useFakeTimers()
-    localStorage.setItem('group-quality-poll-seconds', '30')
-    mocks.history.mockResolvedValue([{ ...run, status: 'running', source: undefined }])
+    vi.setSystemTime(new Date('2026-10-13T00:00:00Z'))
+    mocks.history.mockResolvedValue([{ ...run, started_at: '2026-10-13T00:00:00Z', status: 'running', duration_ms: 0, source: undefined }])
     const wrapper = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
     await flushPromises()
-    await vi.advanceTimersByTimeAsync(29000)
-    expect(mocks.history).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(mocks.history).toHaveBeenCalledTimes(2)
-    wrapper.unmount()
-    localStorage.setItem('group-quality-poll-seconds', '0')
-    const manual = mount(GroupQualityDialog, { ...options, props: { show: true, config, admin: false } })
+    await vi.advanceTimersByTimeAsync(167080)
     await flushPromises()
-    const count = mocks.history.mock.calls.length
-    await vi.advanceTimersByTimeAsync(60000)
-    expect(mocks.history).toHaveBeenCalledTimes(count)
-    manual.unmount()
+    expect(wrapper.text()).toContain('167.0s')
+    expect(mocks.history.mock.calls.length).toBeGreaterThan(20)
+    expect(mocks.start).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
   it('bounds retries and stops immediately when access is revoked', async () => {
     vi.useFakeTimers()

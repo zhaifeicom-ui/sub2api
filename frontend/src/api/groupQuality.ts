@@ -1,6 +1,6 @@
 import { apiClient } from './client'
 
-export const QUALITY_MODELS = ['gpt-6-astra', 'gpt-6-sol'] as const
+export const QUALITY_MODELS = ['gpt-6-astra', 'gpt-6.1-sol'] as const
 export type QualityModel = typeof QUALITY_MODELS[number]
 export interface QualityConfig {
   monitor_id: number

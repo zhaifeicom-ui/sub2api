@@ -7,7 +7,7 @@ import (
 
 func TestChannelQualityEligibilityDoesNotDependOnHealthModel(t *testing.T) {
 	monitor := &ChannelMonitor{Enabled: true, Provider: "openai", PrimaryModel: "gpt-6.1-sol", APIKey: "encrypted-test-key"}
-	want := []string{"gpt-6-astra", "gpt-6-sol"}
+	want := []string{"gpt-6-astra", "gpt-6.1-sol"}
 	if got := channelQualityModels(monitor); !reflect.DeepEqual(got, want) {
 		t.Fatalf("health model must not hide quality models: %v", got)
 	}

@@ -145,7 +145,7 @@ func (r *channelQualityRepository) Reserve(ctx context.Context, run *service.Cha
 		return service.ErrChannelQualityDenied
 	}
 	run.MonitorName = c.MonitorName
-	if _, err = tx.ExecContext(ctx, `UPDATE channel_quality_test_runs SET status='failed',finished_at=deadline_at,duration_ms=360000,
+	if _, err = tx.ExecContext(ctx, `UPDATE channel_quality_test_runs SET status='failed',finished_at=deadline_at,duration_ms=(EXTRACT(EPOCH FROM (deadline_at-started_at))*1000)::INTEGER,
  error_code='interrupted',error_message='检测超时或服务重启中断，请重新检测' WHERE status='running' AND deadline_at<NOW()`); err != nil {
 		return err
 	}

@@ -1,7 +1,7 @@
 <template>
-  <BaseDialog :show="show" :title="`${t('groupQuality.title')} · ${config.monitor_name}`" width="extra-wide" @close="emit('close')">
-    <div class="grid min-h-[430px] gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
-      <aside class="flex min-w-0 flex-col gap-3">
+  <BaseDialog :show="show" :title="`${t('groupQuality.title')} · ${config.monitor_name}`" width="full" panel-class="!w-[calc(100vw-2rem)] !max-w-[1440px] !h-[90dvh] !max-h-[calc(100dvh-2rem)]" body-class="min-h-0 !overflow-y-auto lg:!overflow-hidden" @close="emit('close')">
+    <div class="grid min-h-0 gap-5 lg:h-full lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside class="flex min-w-0 min-h-0 flex-col gap-3 lg:overflow-y-auto lg:pr-1">
         <label class="input-label" for="quality-model">{{ t('groupQuality.models') }}</label>
         <Select id="quality-model" v-model="model" :options="modelOptions" :disabled="starting || !modelOptions.length" />
         <button v-if="canRun" class="btn btn-primary w-full" :disabled="!canStart" @click="start">
@@ -10,7 +10,7 @@
         <p v-if="remaining > 0" class="text-xs text-amber-600">{{ t('groupQuality.remaining', { seconds: remaining }) }}</p>
         <p v-else-if="!canRun" class="text-xs text-gray-500">{{ t('groupQuality.viewOnly') }}</p>
         <p v-else-if="!supported" class="text-xs text-gray-500">{{ t('groupQuality.unsupported') }}</p>
-        <p class="text-xs leading-relaxed text-gray-500">{{ t('groupQuality.channelKeyHint') }}</p>
+        <p class="text-xs leading-relaxed text-gray-500">{{ t('groupQuality.generationHint') }}</p>
 
         <div class="mt-1 flex items-center justify-between text-xs font-medium text-gray-500">
           <span>{{ t('groupQuality.history') }}</span>
@@ -29,17 +29,17 @@
             <span class="badge" :class="run.status === 'failed' ? 'badge-danger' : run.status === 'running' ? 'badge-warning' : 'badge-success'">{{ statusLabel(run.status) }}</span>
             <span class="text-[11px] text-gray-500">{{ time(run.started_at) }}</span>
           </span>
-          <p class="mt-2 text-xs text-gray-500">{{ run.model }} · {{ t('groupQuality.duration') }} {{ (run.duration_ms / 1000).toFixed(1) }}s</p>
+          <p class="mt-2 text-xs text-gray-500">{{ run.model }} · {{ t('groupQuality.duration') }} {{ elapsed(run).toFixed(1) }}s</p>
           <p class="mt-1 text-xs text-gray-500">{{ t('groupQuality.responseLength') }} {{ run.response_length.toLocaleString() }}</p>
         </button>
       </aside>
 
-      <section class="min-w-0 space-y-3">
+      <section class="flex min-w-0 min-h-0 flex-col gap-3">
         <div v-if="selected" class="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
           <div class="flex flex-wrap gap-x-4 gap-y-1">
             <strong class="text-gray-800 dark:text-gray-200">{{ selected.model }}</strong>
             <span>{{ time(selected.started_at) }} → {{ selected.finished_at ? time(selected.finished_at) : t('groupQuality.running') }}</span>
-            <span>{{ t('groupQuality.duration') }} {{ (selected.duration_ms / 1000).toFixed(1) }}s</span>
+            <span>{{ t('groupQuality.duration') }} {{ elapsed(selected).toFixed(1) }}s</span>
           </div>
           <div v-if="selected.source" class="flex gap-2">
             <button class="btn btn-secondary btn-sm" @click="showSource = !showSource">{{ showSource ? t('groupQuality.preview') : t('groupQuality.viewSource') }}</button>
@@ -52,9 +52,9 @@
         </div>
         <div v-if="error" role="alert" class="rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ error }}</div>
         <div v-if="selected?.error_message" class="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ selected.error_message }}</div>
-        <pre v-if="showSource && selected?.source" class="h-[min(60vh,640px)] overflow-auto rounded-xl bg-gray-950 p-4 text-xs text-gray-100">{{ selected.source }}</pre>
-        <iframe v-else-if="preview" :key="selected?.id" :srcdoc="preview" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="t('groupQuality.preview')" class="h-[min(60vh,640px)] min-h-[360px] w-full rounded-xl border border-gray-200 bg-white dark:border-dark-700"></iframe>
-        <div v-else class="flex h-[360px] items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-400 dark:border-dark-600">{{ selected?.status === 'running' ? t('groupQuality.running') : t('groupQuality.noArtifact') }}</div>
+        <pre v-if="showSource && selected?.source" class="h-[60dvh] min-h-[320px] flex-1 overflow-auto rounded-xl bg-gray-950 p-4 text-xs text-gray-100 lg:h-auto lg:min-h-0">{{ selected.source }}</pre>
+        <iframe v-else-if="preview" :key="selected?.id" :srcdoc="preview" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="t('groupQuality.preview')" class="h-[60dvh] min-h-[320px] w-full flex-1 rounded-xl border border-gray-200 bg-white dark:border-dark-700 lg:h-auto lg:min-h-0"></iframe>
+        <div v-else class="flex h-[60dvh] min-h-[320px] flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 text-sm text-gray-400 dark:border-dark-600 lg:h-auto lg:min-h-0"><span>{{ selected?.status === 'running' ? t('groupQuality.running') : t('groupQuality.noArtifact') }}</span><span v-if="selected?.status === 'running'" class="text-xs">{{ t('groupQuality.generationHint') }}</span></div>
         <p class="text-xs text-gray-500">{{ t('groupQuality.sourceHint') }}</p>
       </section>
     </div>
@@ -84,6 +84,7 @@ const loading = ref(false)
 const starting = ref(false)
 const showSource = ref(false)
 const now = ref(Date.now())
+const elapsed = (run: QualityRun) => run.status === 'running' ? Math.max(0, (now.value - Date.parse(run.started_at)) / 1000) : run.duration_ms / 1000
 const cooldownSeconds = computed(() => props.config.cooldown_seconds || 600)
 const modelOptions = computed(() => props.config.available_models.filter(value => props.config.models.includes(value as QualityModel)).map(value => ({ value, label: value })))
 const supported = computed(() => props.config.available_models.includes(model.value) && props.config.models.includes(model.value))
