@@ -198,6 +198,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	estimatedUsage := result.UsageMissing && apiKey.GroupID != nil && ccUsageEstimateEnabled(*apiKey.GroupID) && result.EstimatedOutputTokens > 0
+	if estimatedUsage {
+		// Copy: asynchronous billing must not mutate the forwarding result.
+		cloned := *result
+		cloned.Usage = OpenAIUsage{InputTokens: result.EstimatedInputTokens, CacheReadInputTokens: result.EstimatedInputTokens, OutputTokens: result.EstimatedOutputTokens}
+		result = &cloned
+	}
 	billingAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 	if err != nil {
 		return err
@@ -445,6 +452,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeSource:          optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:       imageSizeBreakdown,
 		NativeCompactionV2:       input.NativeCompactionV2,
+	}
+	if estimatedUsage {
+		// BillingTier is already an admin-only DTO field. Keep normal billing
+		// mode and never expose this annotation through the regular user DTO.
+		tier := "estimated_usage_cache_input"
+		usageLog.BillingTier = &tier
 	}
 	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {

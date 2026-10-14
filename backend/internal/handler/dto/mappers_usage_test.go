@@ -8,6 +8,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEstimatedUsageAnnotationIsAdminOnly(t *testing.T) {
+	tier := "estimated_usage_cache_input"
+	log := &service.UsageLog{BillingTier: &tier}
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "estimated_usage")
+	require.NotContains(t, string(userJSON), "billing_tier")
+	adminJSON, err := json.Marshal(UsageLogFromServiceAdmin(log))
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), tier)
+}
+
 func TestUsageLogFromService_IncludesOpenAIWSMode(t *testing.T) {
 	t.Parallel()
 

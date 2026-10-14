@@ -187,6 +187,12 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// 字段，上游 400 "The `reasoning_content` in the thinking mode must be
 	// passed back to the API"。在共用出站点补空格占位，真实明文不覆盖。
 	body = ensureDeepSeekChatReasoningPlaceholders(account, body)
+	c.Set(ccEstimatedInputContextKey, 0)
+	if keyValue, ok := c.Get("api_key"); ok {
+		if key, ok := keyValue.(*APIKey); ok && key.GroupID != nil && ccUsageEstimateEnabled(*key.GroupID) {
+			c.Set(ccEstimatedInputContextKey, estimateCCInput(body))
+		}
+	}
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()
@@ -254,6 +260,9 @@ type ccStreamScanState struct {
 	FirstTokenMs *int
 	// SawDone 表示上游发出了 [DONE] 哨兵。
 	SawDone bool
+	// SawUsage distinguishes an authoritative zero from missing metering.
+	SawUsage    bool
+	OutputUnits int
 	// Err 为 scanner 读错误（客户端 context 取消不属于此类，会原样带出）。
 	// 非 nil 时调用方必须跳过 finalize 并返回 usage-incomplete 错误，避免
 	// 把上游截断伪装成正常收尾。
@@ -298,6 +307,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 
 		if u := extractCCStreamUsage(payload); u != nil {
 			st.Usage = *u
+			st.SawUsage = true
 		}
 
 		var chunk apicompat.ChatCompletionsChunk
@@ -313,6 +323,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 			st.FirstTokenMs = &ms
 		}
 		emit(&chunk)
+		st.OutputUnits += ccChunkOutputUnits(&chunk)
 	}
 
 	if err := scanner.Err(); err != nil {

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"net/http"
 	"strings"
 	"time"
@@ -299,6 +301,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
+	sawUsage := false
+	outputUnits := 0
 	var firstTokenMs *int
 	clientDisconnected := false
 	clientOutputStarted := false
@@ -350,6 +354,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
+					sawUsage = true
+				}
+				var chunk apicompat.ChatCompletionsChunk
+				if json.Unmarshal([]byte(payload), &chunk) == nil {
+					outputUnits += ccChunkOutputUnits(&chunk)
 				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
@@ -384,6 +393,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			RequestID:                     requestID,
 			UpstreamHeaders:               resp.Header,
 			Usage:                         usage,
+			UsageMissing:                  !sawUsage,
+			EstimatedInputTokens:          c.GetInt(ccEstimatedInputContextKey),
+			EstimatedOutputTokens:         (outputUnits + 3) / 4,
 			Model:                         originalModel,
 			BillingModel:                  billingModel,
 			UpstreamModel:                 upstreamModel,

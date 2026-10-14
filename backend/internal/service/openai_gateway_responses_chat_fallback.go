@@ -230,11 +230,34 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		writeEvents(events)
 	})
 
+	// A clean EOF is not a successful completion, and missing usage is not
+	// authoritative zero-cost usage. Never synthesize response.completed here.
+	if scan.Err == nil && !scan.SawDone {
+		scan.Err = fmt.Errorf("upstream stream ended without completion sentinel")
+	}
 	if scan.Err != nil {
+		code := "upstream_stream_incomplete"
+		message := "Upstream stream interrupted; only received usage can be settled"
+		if !scan.SawUsage {
+			code = "upstream_usage_missing"
+			message = "Upstream usage missing; billing requires reconciliation"
+		}
+		SetOpsUpstreamError(c, http.StatusBadGateway, message, code)
+		writeEvents([]apicompat.ResponsesStreamEvent{{
+			Type: "response.failed",
+			Response: &apicompat.ResponsesResponse{
+				ID: state.ResponseID, Object: "response", CreatedAt: state.Created,
+				Model: originalModel, Status: "failed", Output: []apicompat.ResponsesOutput{},
+				Error: &apicompat.ResponsesError{Code: code, Message: message},
+			},
+		}})
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
 			UpstreamHeaders:             resp.Header,
 			Usage:                       scan.Usage,
+			UsageMissing:                !scan.SawUsage,
+			EstimatedInputTokens:        c.GetInt(ccEstimatedInputContextKey),
+			EstimatedOutputTokens:       (scan.OutputUnits + 3) / 4,
 			Model:                       originalModel,
 			BillingModel:                billingModel,
 			UpstreamModel:               upstreamModel,
@@ -283,6 +306,9 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		RequestID:                   requestID,
 		UpstreamHeaders:             resp.Header,
 		Usage:                       scan.Usage,
+		UsageMissing:                !scan.SawUsage,
+		EstimatedInputTokens:        c.GetInt(ccEstimatedInputContextKey),
+		EstimatedOutputTokens:       (scan.OutputUnits + 3) / 4,
 		Model:                       originalModel,
 		BillingModel:                billingModel,
 		UpstreamModel:               upstreamModel,
