@@ -1,5 +1,16 @@
 export default {
   common: {
+    balancePurchase: '余额购买订阅',
+    balancePurchaseHint: '确认后从站内余额扣除 ${amount} USD，立即开通或续期。不收第三方支付手续费。',
+    balancePurchaseInsufficient: '余额不足，请先充值。',
+    balancePurchaseFailed: '购买失败，请重试。',
+    balancePurchaseSuccess: '订阅已开通或续期成功。',
+    subscriptionConcurrencyAction: '并发',
+    subscriptionConcurrencyDefault: '分组默认：{limit}（0 表示不额外限制）',
+    subscriptionConcurrency: '订阅每人并发上限',
+    subscriptionConcurrencyHint: '每位用户独立计数，同一订阅分组内所有 Key 共享。0 表示不额外限制，仍受用户全局并发限制。',
+    subscriptionConcurrencyOverride: '此用户订阅并发上限',
+    subscriptionConcurrencyOverrideHint: '0 表示继承分组默认值；正整数覆盖默认值，不影响其他分组。仍受用户全局并发限制，保存后用于新请求。',
     loading: '加载中...',
     submitting: '提交中...',
     justNow: '刚刚',

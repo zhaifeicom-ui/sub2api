@@ -38,6 +38,12 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", "Live is not enabled for this group")
 		return
 	}
+	// Persistent Live leases outlive this HTTP handshake. Until they carry a
+	// subscription lease, fail closed instead of silently bypassing the cap.
+	if service.HasSubscriptionConcurrencyLimit(c.Request.Context()) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Live sessions are not supported with subscription concurrency limits")
+		return
+	}
 	request, err := parseLiveCallRequest(c)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())

@@ -740,6 +740,7 @@
             v-if="createForm.subscription_type === 'subscription'"
             class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
           >
+            <SubscriptionConcurrencyInput v-model="createForm.subscription_concurrency" />
             <div>
               <label class="input-label">{{
                 t("admin.groups.subscription.dailyLimit")
@@ -2394,6 +2395,7 @@
             v-if="editForm.subscription_type === 'subscription'"
             class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
           >
+            <SubscriptionConcurrencyInput v-model="editForm.subscription_concurrency" />
             <div>
               <label class="input-label">{{
                 t("admin.groups.subscription.dailyLimit")
@@ -4327,6 +4329,7 @@ import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
+import SubscriptionConcurrencyInput from "@/components/admin/subscription/SubscriptionConcurrencyInput.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
@@ -4973,6 +4976,7 @@ const createForm = reactive({
   deepseek_peak_rate_enabled: true,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
+  subscription_concurrency: 0,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -5339,6 +5343,7 @@ const editForm = reactive({
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
+  subscription_concurrency: 0,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -5802,6 +5807,7 @@ const closeCreateModal = () => {
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
+  createForm.subscription_concurrency = 0;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
@@ -5959,6 +5965,7 @@ const handleCreateGroup = async () => {
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
+      subscription_concurrency: createForm.subscription_concurrency,
       weekly_limit_usd: normalizeOptionalLimit(
         createForm.weekly_limit_usd as number | string | null,
       ),
@@ -6087,6 +6094,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
+  editForm.subscription_concurrency = group.subscription_concurrency ?? 0;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.long_context_pricing_enabled =
@@ -6299,6 +6307,7 @@ const handleUpdateGroup = async () => {
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,
       ),
+      subscription_concurrency: editForm.subscription_concurrency,
       weekly_limit_usd: normalizeOptionalLimit(
         editForm.weekly_limit_usd as number | string | null,
       ),

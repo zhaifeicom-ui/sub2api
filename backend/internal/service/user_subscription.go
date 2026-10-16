@@ -9,9 +9,10 @@ import (
 const subscriptionDayDuration = 24 * time.Hour
 
 type UserSubscription struct {
-	ID      int64
-	UserID  int64
-	GroupID int64
+	ID               int64
+	UserID           int64
+	GroupID          int64
+	ConcurrencyLimit int // 0 inherits the subscription group's default.
 
 	StartsAt  time.Time
 	ExpiresAt time.Time

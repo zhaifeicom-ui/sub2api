@@ -22,6 +22,13 @@ func NewUserSubscriptionRepository(client *dbent.Client) service.UserSubscriptio
 	return &userSubscriptionRepository{client: client}
 }
 
+var _ service.SubscriptionConcurrencyRepository = (*userSubscriptionRepository)(nil)
+
+func (r *userSubscriptionRepository) UpdateConcurrencyLimit(ctx context.Context, id int64, limit int) error {
+	_, err := clientFromContext(ctx, r.client).UserSubscription.UpdateOneID(id).SetConcurrencyLimit(limit).Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+}
+
 func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.UserSubscription) error {
 	if sub == nil {
 		return service.ErrSubscriptionNilInput
@@ -32,6 +39,7 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetUserID(sub.UserID).
 		SetGroupID(sub.GroupID).
 		SetExpiresAt(sub.ExpiresAt).
+		SetConcurrencyLimit(sub.ConcurrencyLimit).
 		SetNillableDailyWindowStart(sub.DailyWindowStart).
 		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
 		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
@@ -656,6 +664,7 @@ func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription,
 		AssignedBy:         m.AssignedBy,
 		AssignedAt:         m.AssignedAt,
 		Notes:              derefString(m.Notes),
+		ConcurrencyLimit:   m.ConcurrencyLimit,
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,
 		DeletedAt:          m.DeletedAt,

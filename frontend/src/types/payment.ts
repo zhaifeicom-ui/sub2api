@@ -109,6 +109,7 @@ export interface PaymentOrder {
 // ==================== Plans & Channels ====================
 
 export interface SubscriptionPlan {
+	 subscription_concurrency?: number
   id: number
   group_id: number
   group_platform?: string

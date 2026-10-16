@@ -719,6 +719,18 @@ func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, ma
 	return result == 1, nil
 }
 
+var _ service.SubscriptionConcurrencyCache = (*concurrencyCache)(nil)
+
+func (c *concurrencyCache) AcquireSubscriptionSlot(ctx context.Context, id int64, limit int, requestID string) (bool, error) {
+	key := "concurrency:subscription:" + strconv.FormatInt(id, 10)
+	result, _, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, key + ":live"}, limit, c.slotTTLSeconds, requestID)
+	return result == 1, err
+}
+
+func (c *concurrencyCache) ReleaseSubscriptionSlot(ctx context.Context, id int64, requestID string) error {
+	return c.rdb.ZRem(ctx, "concurrency:subscription:"+strconv.FormatInt(id, 10), requestID).Err()
+}
+
 func (c *concurrencyCache) ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error {
 	key := userSlotKey(userID)
 	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {

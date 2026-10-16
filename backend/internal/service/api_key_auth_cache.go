@@ -65,6 +65,7 @@ type APIKeyAuthGroupSnapshot struct {
 	SubscriptionType                string                        `json:"subscription_type"`
 	RateMultiplier                  float64                       `json:"rate_multiplier"`
 	DailyLimitUSD                   *float64                      `json:"daily_limit_usd,omitempty"`
+	SubscriptionConcurrency         int                           `json:"subscription_concurrency,omitempty"`
 	WeeklyLimitUSD                  *float64                      `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD                 *float64                      `json:"monthly_limit_usd,omitempty"`
 	AllowImageGeneration            bool                          `json:"allow_image_generation"`

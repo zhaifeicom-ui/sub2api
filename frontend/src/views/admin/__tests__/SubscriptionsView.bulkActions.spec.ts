@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import SubscriptionsView from '../SubscriptionsView.vue'
 
-const { list, bulkAction, bulkAssign, listUsers, showError } = vi.hoisted(() => ({
-  list: vi.fn(), bulkAction: vi.fn(), bulkAssign: vi.fn(), listUsers: vi.fn(), showError: vi.fn()
+const { list, bulkAction, bulkAssign, updateConcurrency, listUsers, showError } = vi.hoisted(() => ({
+  list: vi.fn(), bulkAction: vi.fn(), bulkAssign: vi.fn(), updateConcurrency: vi.fn(), listUsers: vi.fn(), showError: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
-    subscriptions: { list, bulkAction, bulkAssign },
+    subscriptions: { list, bulkAction, bulkAssign, updateConcurrency },
     groups: { getAll: vi.fn().mockResolvedValue([]) },
     users: { list: listUsers }
   }
@@ -31,7 +31,7 @@ function mountView() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
-        DataTable: { name: 'DataTable', props: ['data', 'selectedKeys'], emits: ['update:selectedKeys', 'sort'], template: '<div />' },
+        DataTable: { name: 'DataTable', props: ['data', 'selectedKeys'], emits: ['update:selectedKeys', 'sort'], template: '<div><slot v-for="row in data" name="cell-actions" :row="row" /></div>' },
         BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
         Pagination: true, Select: true, ConfirmDialog: true, Icon: true,
         GroupBadge: true, GroupOptionItem: true, EmptyState: true, Teleport: true, RouterLink: true
@@ -62,6 +62,21 @@ async function select(ids: number[]) {
 }
 
 describe('subscription bulk operations', () => {
+  it('edits per-user subscription concurrency and supports restoring inheritance', async () => {
+    updateConcurrency.mockResolvedValue({ ...rows[0], concurrency_limit: 2 })
+    await wrapper.findAll('[data-test="subscription-concurrency"]')[0].trigger('click')
+    const form = wrapper.get('#subscription-concurrency-form')
+    await form.get('input').setValue('2')
+    await form.trigger('submit')
+    await flushPromises()
+    expect(updateConcurrency).toHaveBeenCalledWith(1, 2)
+    expect(list).toHaveBeenCalledTimes(2)
+    await wrapper.findAll('[data-test="subscription-concurrency"]')[0].trigger('click')
+    await wrapper.get('#subscription-concurrency-form input').setValue('0')
+    await wrapper.get('#subscription-concurrency-form').trigger('submit')
+    await flushPromises()
+    expect(updateConcurrency).toHaveBeenLastCalledWith(1, 0)
+  })
   it('uses eligible selected rows and retains failures and untouched selections after a partial result', async () => {
     bulkAction.mockResolvedValue({ success_count: 1, failed_count: 1, results: [
       { subscription_id: 1, success: true },

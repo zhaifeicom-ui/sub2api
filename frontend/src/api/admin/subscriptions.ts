@@ -230,6 +230,7 @@ export async function listByUser(
 }
 
 export const subscriptionsAPI = {
+  updateConcurrency,
   list,
   getById,
   getProgress,
@@ -245,3 +246,8 @@ export const subscriptionsAPI = {
 }
 
 export default subscriptionsAPI
+
+export async function updateConcurrency(id: number, concurrencyLimit: number): Promise<UserSubscription> {
+  const { data } = await apiClient.put<UserSubscription>(`/admin/subscriptions/${id}/concurrency`, { concurrency_limit: concurrencyLimit })
+  return data
+}

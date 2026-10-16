@@ -28,6 +28,7 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(
+			paymentorder.PaymentTypeNEQ("balance"), // Internal spending is not new external revenue.
 			paymentorder.StatusIn(paidStatuses...),
 			paymentorder.PaidAtGTE(since),
 		).

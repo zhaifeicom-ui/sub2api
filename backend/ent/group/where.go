@@ -125,6 +125,11 @@ func DuplicateOperationID(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
 }
 
+// SubscriptionConcurrency applies equality check predicate on the "subscription_concurrency" field. It's identical to SubscriptionConcurrencyEQ.
+func SubscriptionConcurrency(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSubscriptionConcurrency, v))
+}
+
 // Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
 func Platform(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPlatform, v))
@@ -998,6 +1003,46 @@ func DuplicateOperationIDEqualFold(v string) predicate.Group {
 // DuplicateOperationIDContainsFold applies the ContainsFold predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDuplicateOperationID, v))
+}
+
+// SubscriptionConcurrencyEQ applies the EQ predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSubscriptionConcurrency, v))
+}
+
+// SubscriptionConcurrencyNEQ applies the NEQ predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSubscriptionConcurrency, v))
+}
+
+// SubscriptionConcurrencyIn applies the In predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSubscriptionConcurrency, vs...))
+}
+
+// SubscriptionConcurrencyNotIn applies the NotIn predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSubscriptionConcurrency, vs...))
+}
+
+// SubscriptionConcurrencyGT applies the GT predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSubscriptionConcurrency, v))
+}
+
+// SubscriptionConcurrencyGTE applies the GTE predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSubscriptionConcurrency, v))
+}
+
+// SubscriptionConcurrencyLT applies the LT predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSubscriptionConcurrency, v))
+}
+
+// SubscriptionConcurrencyLTE applies the LTE predicate on the "subscription_concurrency" field.
+func SubscriptionConcurrencyLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSubscriptionConcurrency, v))
 }
 
 // PlatformEQ applies the EQ predicate on the "platform" field.

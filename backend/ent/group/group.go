@@ -44,6 +44,8 @@ const (
 	FieldStatus = "status"
 	// FieldDuplicateOperationID holds the string denoting the duplicate_operation_id field in the database.
 	FieldDuplicateOperationID = "duplicate_operation_id"
+	// FieldSubscriptionConcurrency holds the string denoting the subscription_concurrency field in the database.
+	FieldSubscriptionConcurrency = "subscription_concurrency"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
 	// FieldSubscriptionType holds the string denoting the subscription_type field in the database.
@@ -239,6 +241,7 @@ var Columns = []string{
 	FieldIsExclusive,
 	FieldStatus,
 	FieldDuplicateOperationID,
+	FieldSubscriptionConcurrency,
 	FieldPlatform,
 	FieldSubscriptionType,
 	FieldDailyLimitUsd,
@@ -353,6 +356,10 @@ var (
 	StatusValidator func(string) error
 	// DuplicateOperationIDValidator is a validator for the "duplicate_operation_id" field. It is called by the builders before save.
 	DuplicateOperationIDValidator func(string) error
+	// DefaultSubscriptionConcurrency holds the default value on creation for the "subscription_concurrency" field.
+	DefaultSubscriptionConcurrency int
+	// SubscriptionConcurrencyValidator is a validator for the "subscription_concurrency" field. It is called by the builders before save.
+	SubscriptionConcurrencyValidator func(int) error
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
@@ -517,6 +524,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByDuplicateOperationID orders the results by the duplicate_operation_id field.
 func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDuplicateOperationID, opts...).ToFunc()
+}
+
+// BySubscriptionConcurrency orders the results by the subscription_concurrency field.
+func BySubscriptionConcurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSubscriptionConcurrency, opts...).ToFunc()
 }
 
 // ByPlatform orders the results by the platform field.

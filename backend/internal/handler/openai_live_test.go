@@ -8,10 +8,24 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestLiveCannotBypassSubscriptionConcurrency(t *testing.T) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest("POST", "/v1/live", nil)
+	group := &service.Group{ID: 8, Platform: service.PlatformOpenAI, AllowLive: true, SubscriptionType: service.SubscriptionTypeSubscription, SubscriptionConcurrency: 2}
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 1, Group: group})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1, Concurrency: 999})
+	c.Request = c.Request.WithContext(service.WithSubscriptionConcurrency(c.Request.Context(), &service.UserSubscription{ID: 101, UserID: 1, GroupID: 8}, group))
+	(&OpenAIGatewayHandler{}).Live(c)
+	require.Equal(t, 400, rec.Code)
+	require.Contains(t, rec.Body.String(), "subscription concurrency limits")
+}
 
 func TestParseLiveCallRequestMultipartPreservesSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -24,6 +24,11 @@ export interface PublicOrderVerifyResult {
 }
 
 export const paymentAPI = {
+  purchaseSubscriptionWithBalance(planId: number, expectedPrice: number, idempotencyKey: string) {
+    return apiClient.post<{ order_id: number; amount: number; currency: string; status: string; replayed: boolean }>(
+      '/payment/subscriptions/balance', { plan_id: planId, expected_price: expectedPrice }, { headers: { 'Idempotency-Key': idempotencyKey } }
+    )
+  },
   /** Get payment configuration (enabled types, limits, etc.) */
   getConfig() {
     return apiClient.get<PaymentConfig>('/payment/config')

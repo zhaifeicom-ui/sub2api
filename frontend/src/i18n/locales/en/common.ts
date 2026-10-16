@@ -1,5 +1,16 @@
 export default {
   common: {
+    balancePurchase: 'Buy subscription with balance',
+    balancePurchaseHint: 'Confirm to spend ${amount} USD from your account balance and activate or renew immediately. No payment-provider fee.',
+    balancePurchaseInsufficient: 'Insufficient balance. Please top up first.',
+    balancePurchaseFailed: 'Purchase failed. Please retry.',
+    balancePurchaseSuccess: 'Subscription activated or renewed.',
+    subscriptionConcurrencyAction: 'Concurrency',
+    subscriptionConcurrencyDefault: 'Group default: {limit} (0 adds no extra limit)',
+    subscriptionConcurrency: 'Subscription concurrency per user',
+    subscriptionConcurrencyHint: 'Counted separately per user, shared across all keys in this subscription group. 0 adds no extra limit; the global user limit still applies.',
+    subscriptionConcurrencyOverride: 'User subscription concurrency',
+    subscriptionConcurrencyOverrideHint: '0 inherits the group default. A positive integer overrides it without affecting other groups. The global user limit still applies. Applies to new requests after saving.',
     loading: 'Loading...',
     submitting: 'Submitting...',
     justNow: 'just now',

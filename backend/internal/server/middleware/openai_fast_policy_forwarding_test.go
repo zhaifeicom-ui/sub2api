@@ -119,7 +119,7 @@ func TestAPIKeyAuthForwardsUserScopedOpenAIFastPolicyToUpstream(t *testing.T) {
 		request.Header.Set("x-api-key", apiKey)
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
-		require.Equal(t, http.StatusOK, response.Code)
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	}
 
 	send("key-user-42")
@@ -172,8 +172,11 @@ type openAIFastPolicyForwardingSettingRepo struct {
 	value string
 }
 
-func (r *openAIFastPolicyForwardingSettingRepo) GetValue(context.Context, string) (string, error) {
-	return r.value, nil
+func (r *openAIFastPolicyForwardingSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	if key == service.SettingKeyOpenAIFastPolicySettings {
+		return r.value, nil
+	}
+	return "", service.ErrSettingNotFound
 }
 
 type openAIFastPolicyForwardingHTTPUpstream struct {

@@ -418,6 +418,10 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <button type="button" data-test="subscription-concurrency" :title="t('common.subscriptionConcurrencyOverride')" @click="openConcurrency(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
+                <Icon name="users" size="sm" />
+                <span class="text-xs">{{ t('common.subscriptionConcurrencyAction') }} · {{ row.concurrency_limit || row.group?.subscription_concurrency || '—' }}</span>
+              </button>
               <button
                 v-if="row.status === 'active' || row.status === 'expired'"
                 @click="handleExtend(row)"
@@ -657,6 +661,19 @@
     </BaseDialog>
 
     <!-- Adjust Subscription Modal -->
+    <BaseDialog :show="!!editingConcurrency" :title="t('common.subscriptionConcurrencyOverride')" width="narrow" @close="closeConcurrency">
+      <form id="subscription-concurrency-form" @submit.prevent="saveConcurrency" class="space-y-4">
+        <p class="text-sm text-gray-500">{{ editingConcurrency?.user?.email }} · {{ editingConcurrency?.group?.name }}</p>
+        <SubscriptionConcurrencyInput v-model="concurrencyLimit" override />
+        <p class="input-hint">{{ t('common.subscriptionConcurrencyDefault', { limit: editingConcurrency?.group?.subscription_concurrency ?? 0 }) }}</p>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button class="btn btn-secondary" :disabled="savingConcurrency" @click="closeConcurrency">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" form="subscription-concurrency-form" type="submit" :disabled="savingConcurrency">{{ t('common.save') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
     <BaseDialog
       :show="showExtendModal"
       :title="t('admin.subscriptions.adjustSubscription')"
@@ -849,6 +866,7 @@ import type { SimpleUser } from '@/api/admin/usage'
 import type { SubscriptionBulkAction, SubscriptionBulkActionResult, BulkAssignSubscriptionResult } from '@/api/admin/subscriptions'
 import { useTableSelection } from '@/composables/useTableSelection'
 import BulkSubscriptionActionDialog from '@/components/admin/subscription/BulkSubscriptionActionDialog.vue'
+import SubscriptionConcurrencyInput from '@/components/admin/subscription/SubscriptionConcurrencyInput.vue'
 import type { Column } from '@/components/common/types'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -873,6 +891,26 @@ import { GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const editingConcurrency = ref<UserSubscription | null>(null)
+const concurrencyLimit = ref(0)
+const savingConcurrency = ref(false)
+function openConcurrency(subscription: UserSubscription) {
+  editingConcurrency.value = subscription
+  concurrencyLimit.value = subscription.concurrency_limit ?? 0
+}
+function closeConcurrency() { if (!savingConcurrency.value) editingConcurrency.value = null }
+async function saveConcurrency() {
+  if (!editingConcurrency.value || savingConcurrency.value || !Number.isInteger(concurrencyLimit.value) || concurrencyLimit.value < 0 || concurrencyLimit.value > 100000) return
+  savingConcurrency.value = true
+  try {
+    await adminAPI.subscriptions.updateConcurrency(editingConcurrency.value.id, concurrencyLimit.value)
+    editingConcurrency.value = null
+    appStore.showSuccess(t('common.saved'))
+    await loadSubscriptions()
+  } catch (error) {
+    appStore.showError(error instanceof Error ? error.message : 'Failed to update concurrency')
+  } finally { savingConcurrency.value = false }
+}
 
 interface GroupOption {
   value: number

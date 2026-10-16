@@ -223,6 +223,27 @@ func (_u *GroupUpdate) SetNillableStatus(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetSubscriptionConcurrency sets the "subscription_concurrency" field.
+func (_u *GroupUpdate) SetSubscriptionConcurrency(v int) *GroupUpdate {
+	_u.mutation.ResetSubscriptionConcurrency()
+	_u.mutation.SetSubscriptionConcurrency(v)
+	return _u
+}
+
+// SetNillableSubscriptionConcurrency sets the "subscription_concurrency" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSubscriptionConcurrency(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetSubscriptionConcurrency(*v)
+	}
+	return _u
+}
+
+// AddSubscriptionConcurrency adds value to the "subscription_concurrency" field.
+func (_u *GroupUpdate) AddSubscriptionConcurrency(v int) *GroupUpdate {
+	_u.mutation.AddSubscriptionConcurrency(v)
+	return _u
+}
+
 // SetPlatform sets the "platform" field.
 func (_u *GroupUpdate) SetPlatform(v string) *GroupUpdate {
 	_u.mutation.SetPlatform(v)
@@ -1517,6 +1538,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SubscriptionConcurrency(); ok {
+		if err := group.SubscriptionConcurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_concurrency", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_concurrency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
@@ -1627,6 +1653,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DuplicateOperationIDCleared() {
 		_spec.ClearField(group.FieldDuplicateOperationID, field.TypeString)
+	}
+	if value, ok := _u.mutation.SubscriptionConcurrency(); ok {
+		_spec.SetField(group.FieldSubscriptionConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSubscriptionConcurrency(); ok {
+		_spec.AddField(group.FieldSubscriptionConcurrency, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -2431,6 +2463,27 @@ func (_u *GroupUpdateOne) SetNillableStatus(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetSubscriptionConcurrency sets the "subscription_concurrency" field.
+func (_u *GroupUpdateOne) SetSubscriptionConcurrency(v int) *GroupUpdateOne {
+	_u.mutation.ResetSubscriptionConcurrency()
+	_u.mutation.SetSubscriptionConcurrency(v)
+	return _u
+}
+
+// SetNillableSubscriptionConcurrency sets the "subscription_concurrency" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSubscriptionConcurrency(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSubscriptionConcurrency(*v)
+	}
+	return _u
+}
+
+// AddSubscriptionConcurrency adds value to the "subscription_concurrency" field.
+func (_u *GroupUpdateOne) AddSubscriptionConcurrency(v int) *GroupUpdateOne {
+	_u.mutation.AddSubscriptionConcurrency(v)
 	return _u
 }
 
@@ -3741,6 +3794,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Group.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SubscriptionConcurrency(); ok {
+		if err := group.SubscriptionConcurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_concurrency", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_concurrency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
@@ -3868,6 +3926,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.DuplicateOperationIDCleared() {
 		_spec.ClearField(group.FieldDuplicateOperationID, field.TypeString)
+	}
+	if value, ok := _u.mutation.SubscriptionConcurrency(); ok {
+		_spec.SetField(group.FieldSubscriptionConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSubscriptionConcurrency(); ok {
+		_spec.AddField(group.FieldSubscriptionConcurrency, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)

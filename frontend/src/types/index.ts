@@ -563,6 +563,7 @@ export interface ReasoningEffortMapping {
 }
 
 export interface Group {
+	 subscription_concurrency?: number
   id: number
   name: string
   description: string | null
@@ -791,6 +792,7 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+	 subscription_concurrency?: number
   name: string
   description?: string | null
   platform?: GroupPlatform
@@ -857,6 +859,7 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+	 subscription_concurrency?: number
   name?: string
   description?: string | null
   platform?: GroupPlatform
@@ -2100,6 +2103,7 @@ export interface ChangePasswordRequest {
 // ==================== User Subscription Types ====================
 
 export interface UserSubscription {
+	 concurrency_limit?: number
   id: number
   user_id: number
   group_id: number

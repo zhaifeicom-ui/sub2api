@@ -218,6 +218,20 @@ func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
 	return _c
 }
 
+// SetSubscriptionConcurrency sets the "subscription_concurrency" field.
+func (_c *GroupCreate) SetSubscriptionConcurrency(v int) *GroupCreate {
+	_c.mutation.SetSubscriptionConcurrency(v)
+	return _c
+}
+
+// SetNillableSubscriptionConcurrency sets the "subscription_concurrency" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSubscriptionConcurrency(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetSubscriptionConcurrency(*v)
+	}
+	return _c
+}
+
 // SetPlatform sets the "platform" field.
 func (_c *GroupCreate) SetPlatform(v string) *GroupCreate {
 	_c.mutation.SetPlatform(v)
@@ -1093,6 +1107,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.SubscriptionConcurrency(); !ok {
+		v := group.DefaultSubscriptionConcurrency
+		_c.mutation.SetSubscriptionConcurrency(v)
+	}
 	if _, ok := _c.mutation.Platform(); !ok {
 		v := group.DefaultPlatform
 		_c.mutation.SetPlatform(v)
@@ -1290,6 +1308,14 @@ func (_c *GroupCreate) check() error {
 	if v, ok := _c.mutation.DuplicateOperationID(); ok {
 		if err := group.DuplicateOperationIDValidator(v); err != nil {
 			return &ValidationError{Name: "duplicate_operation_id", err: fmt.Errorf(`ent: validator failed for field "Group.duplicate_operation_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SubscriptionConcurrency(); !ok {
+		return &ValidationError{Name: "subscription_concurrency", err: errors.New(`ent: missing required field "Group.subscription_concurrency"`)}
+	}
+	if v, ok := _c.mutation.SubscriptionConcurrency(); ok {
+		if err := group.SubscriptionConcurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_concurrency", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_concurrency": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Platform(); !ok {
@@ -1521,6 +1547,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DuplicateOperationID(); ok {
 		_spec.SetField(group.FieldDuplicateOperationID, field.TypeString, value)
 		_node.DuplicateOperationID = &value
+	}
+	if value, ok := _c.mutation.SubscriptionConcurrency(); ok {
+		_spec.SetField(group.FieldSubscriptionConcurrency, field.TypeInt, value)
+		_node.SubscriptionConcurrency = value
 	}
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
@@ -2055,6 +2085,24 @@ func (u *GroupUpsert) SetStatus(v string) *GroupUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateStatus() *GroupUpsert {
 	u.SetExcluded(group.FieldStatus)
+	return u
+}
+
+// SetSubscriptionConcurrency sets the "subscription_concurrency" field.
+func (u *GroupUpsert) SetSubscriptionConcurrency(v int) *GroupUpsert {
+	u.Set(group.FieldSubscriptionConcurrency, v)
+	return u
+}
+
+// UpdateSubscriptionConcurrency sets the "subscription_concurrency" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSubscriptionConcurrency() *GroupUpsert {
+	u.SetExcluded(group.FieldSubscriptionConcurrency)
+	return u
+}
+
+// AddSubscriptionConcurrency adds v to the "subscription_concurrency" field.
+func (u *GroupUpsert) AddSubscriptionConcurrency(v int) *GroupUpsert {
+	u.Add(group.FieldSubscriptionConcurrency, v)
 	return u
 }
 
@@ -3199,6 +3247,27 @@ func (u *GroupUpsertOne) SetStatus(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateStatus() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetSubscriptionConcurrency sets the "subscription_concurrency" field.
+func (u *GroupUpsertOne) SetSubscriptionConcurrency(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSubscriptionConcurrency(v)
+	})
+}
+
+// AddSubscriptionConcurrency adds v to the "subscription_concurrency" field.
+func (u *GroupUpsertOne) AddSubscriptionConcurrency(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSubscriptionConcurrency(v)
+	})
+}
+
+// UpdateSubscriptionConcurrency sets the "subscription_concurrency" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSubscriptionConcurrency() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSubscriptionConcurrency()
 	})
 }
 
@@ -4659,6 +4728,27 @@ func (u *GroupUpsertBulk) SetStatus(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateStatus() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetSubscriptionConcurrency sets the "subscription_concurrency" field.
+func (u *GroupUpsertBulk) SetSubscriptionConcurrency(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSubscriptionConcurrency(v)
+	})
+}
+
+// AddSubscriptionConcurrency adds v to the "subscription_concurrency" field.
+func (u *GroupUpsertBulk) AddSubscriptionConcurrency(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSubscriptionConcurrency(v)
+	})
+}
+
+// UpdateSubscriptionConcurrency sets the "subscription_concurrency" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSubscriptionConcurrency() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSubscriptionConcurrency()
 	})
 }
 

@@ -123,6 +123,7 @@
                 </p>
                 <!-- Rate + Limits grid -->
                 <div class="mt-3 grid grid-cols-2 gap-3">
+                  <div><span class="text-xs text-gray-400">{{ t('common.subscriptionConcurrencyAction') }}</span><div class="text-lg font-semibold">{{ selectedPlan.subscription_concurrency || t('payment.planCard.unlimited') }}</div></div>
                   <div>
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.rate') }}</span>
                     <div class="flex items-baseline">
@@ -183,6 +184,7 @@
                 </span>
                 <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
               </button>
+              <BalanceSubscriptionPurchase :plan="selectedPlan" @purchased="onBalanceSubscriptionPurchased" />
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
             <!-- Plan list -->
@@ -293,6 +295,7 @@ import {
 } from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
+import BalanceSubscriptionPurchase from '@/components/payment/BalanceSubscriptionPurchase.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
@@ -787,6 +790,13 @@ async function handleSubmitRecharge() {
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+}
+
+async function onBalanceSubscriptionPurchased() {
+  selectedPlan.value = null
+  await Promise.allSettled([authStore.refreshUser(), subscriptionStore.fetchActiveSubscriptions(true)])
+  appStore.showSuccess(t('common.balancePurchaseSuccess'))
+  await router.push('/subscriptions')
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {

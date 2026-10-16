@@ -133,7 +133,29 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 	response.Success(c, progress)
 }
 
-// Assign handles assigning a subscription to a user
+// UpdateConcurrency changes one user's subscription override (0 inherits the group).
+func (h *SubscriptionHandler) UpdateConcurrency(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+	var req struct {
+		Limit *int `json:"concurrency_limit" binding:"required,min=0,max=100000"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid concurrency limit")
+		return
+	}
+	sub, err := h.subscriptionService.UpdateConcurrencyLimit(c.Request.Context(), id, *req.Limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+}
+
+// Assign handles assigning a subscription to a user.
 // POST /api/v1/admin/subscriptions/assign
 func (h *SubscriptionHandler) Assign(c *gin.Context) {
 	var req AssignSubscriptionRequest

@@ -18,6 +18,7 @@ func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
 		Group: &Group{
 			ID: groupID, Name: "pricing-roundtrip", Platform: PlatformAnthropic, Status: StatusActive,
 			DeepseekPeakRateEnabled:   false,
+			SubscriptionConcurrency:   2,
 			LongContextPricingEnabled: true,
 			ModelPricing: []ChannelModelPricing{{
 				Models: []string{"claude-sonnet-*"}, BillingMode: BillingModeToken,
@@ -36,6 +37,7 @@ func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, used)
 	require.NotNil(t, materialized.Group)
+	require.Equal(t, 2, materialized.Group.SubscriptionConcurrency)
 	require.True(t, materialized.Group.LongContextPricingEnabled)
 	require.False(t, materialized.Group.DeepseekPeakRateEnabled)
 	require.Equal(t, apiKey.Group.ModelPricing, materialized.Group.ModelPricing)

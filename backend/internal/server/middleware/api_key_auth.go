@@ -271,6 +271,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		if subscription != nil {
 			c.Set(string(ContextKeySubscription), subscription)
+			c.Request = c.Request.WithContext(service.WithSubscriptionConcurrency(c.Request.Context(), subscription, apiKey.Group))
 		}
 		c.Set(string(ContextKeyAPIKey), apiKey)
 		c.Set(string(ContextKeyUser), AuthSubject{

@@ -102,6 +102,7 @@ type Group struct {
 
 	SubscriptionType          string   `json:"subscription_type"`
 	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
+	SubscriptionConcurrency   int      `json:"subscription_concurrency"`
 	WeeklyLimitUSD            *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD           *float64 `json:"monthly_limit_usd"`
 	LongContextPricingEnabled bool     `json:"long_context_pricing_enabled"`
@@ -749,9 +750,10 @@ type Setting struct {
 }
 
 type UserSubscription struct {
-	ID      int64 `json:"id"`
-	UserID  int64 `json:"user_id"`
-	GroupID int64 `json:"group_id"`
+	ConcurrencyLimit int   `json:"concurrency_limit"`
+	ID               int64 `json:"id"`
+	UserID           int64 `json:"user_id"`
+	GroupID          int64 `json:"group_id"`
 
 	StartsAt  time.Time `json:"starts_at"`
 	ExpiresAt time.Time `json:"expires_at"`

@@ -524,6 +524,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
+	if input.SubscriptionConcurrency < 0 || input.SubscriptionConcurrency > 100000 {
+		return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_CONCURRENCY", "subscription concurrency must be between 0 and 100000")
+	}
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
 
@@ -675,6 +678,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
+		SubscriptionConcurrency:         input.SubscriptionConcurrency,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		LongContextPricingEnabled:       input.LongContextPricingEnabled,
@@ -907,6 +911,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 
 	// 订阅相关字段
+	if input.SubscriptionConcurrency != nil {
+		if *input.SubscriptionConcurrency < 0 || *input.SubscriptionConcurrency > 100000 {
+			return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_CONCURRENCY", "subscription concurrency must be between 0 and 100000")
+		}
+		group.SubscriptionConcurrency = *input.SubscriptionConcurrency
+	}
 	if input.SubscriptionType != "" {
 		group.SubscriptionType = input.SubscriptionType
 	}

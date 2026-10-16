@@ -190,6 +190,28 @@ func (s *SubscriptionService) invalidateSubscriptionCaches(userID, groupID int64
 	return nil
 }
 
+// UpdateConcurrencyLimit changes only the override and invalidates auth-time subscription snapshots.
+func (s *SubscriptionService) UpdateConcurrencyLimit(ctx context.Context, id int64, limit int) (*UserSubscription, error) {
+	if limit < 0 || limit > 100000 {
+		return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_CONCURRENCY", "concurrency must be between 0 and 100000")
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	writer, ok := s.userSubRepo.(SubscriptionConcurrencyRepository)
+	if !ok {
+		return nil, fmt.Errorf("subscription concurrency persistence unavailable")
+	}
+	if err := writer.UpdateConcurrencyLimit(ctx, id, limit); err != nil {
+		return nil, err
+	}
+	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID); err != nil {
+		return nil, err
+	}
+	return s.userSubRepo.GetByID(ctx, id)
+}
+
 // AssignSubscriptionInput 分配订阅输入
 type AssignSubscriptionInput struct {
 	UserID       int64
