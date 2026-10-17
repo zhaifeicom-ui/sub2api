@@ -143,7 +143,9 @@ func ProvideTokenRefreshService(
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.SetAccountRuntimeBlocker(runtimeBlocker)
-	svc.Start()
+	if primarySchedulesEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -331,7 +333,9 @@ func ProvideCNProviderBalanceCheckService(
 		minutes = cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes
 	}
 	svc := NewCNProviderBalanceCheckService(accountRepo, balanceService, quotaService, cfg, time.Duration(minutes)*time.Minute)
-	svc.Start()
+	if primarySchedulesEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -465,8 +469,10 @@ func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWh
 // ProvideConcurrencyService creates ConcurrencyService and starts slot cleanup worker.
 func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config) *ConcurrencyService {
 	svc := NewConcurrencyService(cache)
-	if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
-		logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
+	if exclusiveStartupSlotCleanupEnabled() {
+		if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
+		}
 	}
 	if cfg != nil {
 		svc.SetAccountLoadBatchCacheTTL(time.Duration(cfg.Gateway.Scheduling.LoadBatchCacheTTLMS) * time.Millisecond)
@@ -657,7 +663,9 @@ func ProvideScheduledTestRunnerService(
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
-	svc.Start()
+	if primarySchedulesEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -722,7 +730,9 @@ func ProvideBackupService(
 ) *BackupService {
 	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
+	if primarySchedulesEnabled() {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -1048,7 +1058,9 @@ func ProvideChannelMonitorRunner(
 		svc.SetScheduler(r)
 		svc.SetQuotaFetcher(quotaFetcher)
 	}
-	r.Start()
+	if primarySchedulesEnabled() {
+		r.Start()
+	}
 	return r
 }
 
@@ -1062,7 +1074,9 @@ func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingServ
 
 func ProvideChannelQualityService(repo ChannelQualityRepository, monitorService *ChannelMonitorService, upstream HTTPUpstream, cfg *config.Config) *ChannelQualityService {
 	s := NewChannelQualityService(repo, monitorService, upstream, cfg)
-	s.StartAutomatic()
+	if primarySchedulesEnabled() {
+		s.StartAutomatic()
+	}
 	return s
 }
 
