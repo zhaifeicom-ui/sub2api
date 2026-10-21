@@ -131,6 +131,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
+		if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformVideo {
+			abortWithGoogleError(c, 400, "视频密钥请使用 /v1/task/submit；调用说明见 /v1/skills")
+			return
+		}
+
 		// 简易模式：跳过余额和订阅检查
 		if cfg.RunMode == config.RunModeSimple {
 			c.Set(string(ContextKeyAPIKey), apiKey)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import VideoApiDocs from '@/components/video/VideoApiDocs.vue'
 import VideoStudioSettings from '@/components/video/VideoStudioSettings.vue'
 import { useAuthStore } from '@/stores/auth'
 import { list as listKeys } from '@/api/keys'
@@ -8,7 +9,7 @@ import type { ApiKey } from '@/types'
 import { emptyShot, estimateVideo, videoAPI, videoStatus, type VideoAsset, type VideoInput, type VideoOption, type VideoProject, type VideoRequest, type VideoShot, type VideoTask } from '@/api/videoStudio'
 
 const auth = useAuthStore()
-const mode = ref<'single' | 'story' | 'settings'>('single')
+const mode = ref<'single' | 'story' | 'settings' | 'docs'>('single')
 const options = ref<VideoOption[]>([])
 const keyID = ref(0)
 const modelID = ref('')
@@ -56,7 +57,7 @@ const allTasks = computed(() => [...new Map([...olderTasks.value, ...tasks.value
 const taskMap = computed(() => new Map(allTasks.value.map(t => [t.id, t])))
 const visibleTasks = computed(() => allTasks.value.filter(t => filter.value === 'all' || (filter.value === 'running' ? !t.settled : t.status === filter.value)))
 const completedShots = computed(() => project.value.document.shots.map(s => ({ shot: s, task: taskForShot(s) })).filter(x => x.task?.status === 'completed'))
-const estimatedSingle = computed(() => estimateVideo(model.value, input.value.resolution, input.value.duration))
+const estimatedSingle = computed(() => estimateVideo(model.value, input.value.resolution, input.value.duration, input.value))
 const canSubmit = computed(() => !!model.value && !!input.value.prompt.trim() && !busy.value && !batchBusy.value)
 const errText = (e: unknown) => String((e as { message?: string })?.message || '操作失败，请稍后重试')
 const money = (n: number) => `$${Number(n || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
@@ -211,7 +212,7 @@ onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload)
   try {
     const [, ps, as, ks] = await Promise.all([loadOptions(), videoAPI.projects(), videoAPI.assets(), listKeys(1, 100)])
-    projects.value = ps; assets.value = as; keys.value = ks.items; plannerKeyID.value = keys.value[0]?.id || 0
+    projects.value = ps; assets.value = as; keys.value = ks.items.filter(k => k.group?.platform !== 'video'); plannerKeyID.value = keys.value[0]?.id || 0
     const draft = localStorage.getItem(draftKey.value)
     if (draft && window.confirm('发现未保存的本地剧本草稿，是否恢复？')) { project.value = JSON.parse(draft); mode.value = 'story'; saveState.value = '未保存' } else if (ps[0]) await switchProject(ps[0].id)
     await refreshTasks(); poll = setInterval(() => { if (!document.hidden) void refreshTasks() }, 6000)
@@ -224,12 +225,13 @@ onBeforeUnmount(() => { stopped = true; if (poll) clearInterval(poll); if (autos
   <AppLayout>
     <div class="video-studio">
       <header class="studio-top"><div><span class="eyebrow">CREATIVE STUDIO</span><h1>视频工作台 <span>把灵感变成画面</span></h1></div><div class="top-actions"><span class="wallet">余额 {{ money(auth.user?.balance || 0) }}</span><button @click="refreshTasks">刷新进度</button></div></header>
-      <div class="studio-toolbar"><nav aria-label="工作模式"><button :class="{ active: mode === 'single' }" @click="mode = 'single'">单次生成</button><button :class="{ active: mode === 'story' }" @click="mode = 'story'">剧本与分镜</button><button v-if="auth.user?.role === 'admin'" :class="{ active: mode === 'settings' }" @click="mode = 'settings'">渠道与计费</button></nav><button v-if="mode !== 'settings'" @click="historyOpen = !historyOpen">{{ historyOpen ? '收起历史' : '历史记录' }}</button></div>
+      <div class="studio-toolbar"><nav aria-label="工作模式"><button :class="{ active: mode === 'single' }" @click="mode = 'single'">单次生成</button><button :class="{ active: mode === 'story' }" @click="mode = 'story'">剧本与分镜</button><button @click="mode = 'docs'" :class="{ active: mode === 'docs' }">API 调用说明</button><button v-if="auth.user?.role === 'admin'" :class="{ active: mode === 'settings' }" @click="mode = 'settings'">渠道与计费</button></nav><button v-if="mode !== 'settings'" @click="historyOpen = !historyOpen">{{ historyOpen ? '收起历史' : '历史记录' }}</button></div>
       <div v-if="message" role="status" class="studio-message">{{ message }}<button aria-label="关闭提示" @click="message = ''">×</button></div>
       <div v-if="loading" class="empty-state">正在加载视频工作台…</div>
+      <VideoApiDocs v-else-if="mode === 'docs'" />
       <VideoStudioSettings v-else-if="mode === 'settings' && auth.user?.role === 'admin'" @saved="loadOptions" />
       <template v-else>
-        <div v-if="!options.length" class="setup-notice">暂无可用视频分组。请先配置视频上游、开启分组媒体权限，并创建绑定该分组的 API Key。<router-link to="/keys">管理密钥 →</router-link></div>
+        <div v-if="!options.length" class="setup-notice">暂无可用视频分组。请先配置并开启视频渠道，并创建绑定该分组的 API Key。<router-link to="/keys">管理密钥 →</router-link></div>
         <div class="model-bar">
           <label>视频分组 / 密钥<select v-model="keyID"><option v-if="!options.length" :value="0">暂无视频密钥</option><option v-for="o in options" :key="o.key_id" :value="o.key_id">{{ o.group_name }} · {{ o.key_name }}</option></select></label>
           <label>视频模型<select v-model="modelID"><option v-if="!models.length" value="">请选择分组</option><option v-for="m in models" :key="m.id" :value="m.id">{{ m.label || m.id }}</option></select></label>
@@ -256,7 +258,7 @@ onBeforeUnmount(() => { stopped = true; if (poll) clearInterval(poll); if (autos
               <label>画面比例<div class="ratio-grid"><button v-for="r in ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']" :key="r" :class="{ selected: input.aspect_ratio === r }" @click="input.aspect_ratio = r"><span class="ratio-shape" :style="{ aspectRatio: r.replace(':', '/') }" />{{ r }}</button></div></label>
               <div class="section-heading"><h3>参考素材</h3><button @click="openLibrary('reference')">＋ 从素材库添加</button></div><p class="hint">图片 {{ input.images.length }}/{{ model?.max_images || 0 }} · 视频 {{ input.videos.length }}/{{ model?.max_videos || 0 }} · 音频 {{ input.audios.length }}/{{ model?.max_audios || 0 }}</p>
               <div class="asset-strip"><div v-for="id in input.images" :key="id" class="asset-thumb"><img :src="assetURL(id)" alt="参考图片" /><button aria-label="移除参考图" @click="input.images = input.images.filter(x => x !== id)">×</button></div><div v-for="id in [...input.videos, ...input.audios]" :key="id" class="media-chip">{{ assets.find(a => a.id === id)?.name || '媒体素材' }}<button @click="input.videos = input.videos.filter(x => x !== id); input.audios = input.audios.filter(x => x !== id)">×</button></div></div>
-              <footer class="generate-footer"><div><small>预计冻结</small><strong>{{ money(quote ?? estimatedSingle) }}</strong></div><button class="primary" :disabled="!canSubmit" @click="prepareSubmit()">{{ busy ? '正在报价…' : '生成视频 →' }}</button></footer>
+              <footer class="generate-footer"><div><small>预计冻结</small><strong>{{ model?.rules?.length ? '以报价确认为准' : money(quote ?? estimatedSingle) }}</strong></div><button class="primary" :disabled="!canSubmit" @click="prepareSubmit()">{{ busy ? '正在报价…' : '生成视频 →' }}</button></footer>
             </div>
             <template v-else>
               <div class="canvas-toolbar"><div><h2>分镜画布</h2><span>{{ project.document.shots.length }} 个镜头 · {{ project.document.shots.reduce((n, s) => n + s.duration, 0) }} 秒</span></div><div><button aria-label="缩小" @click="zoom = Math.max(.6, zoom - .1)">−</button><button @click="zoom = 1">{{ Math.round(zoom * 100) }}%</button><button aria-label="放大" @click="zoom = Math.min(1.4, zoom + .1)">＋</button><button @click="addShot">添加镜头</button></div></div>

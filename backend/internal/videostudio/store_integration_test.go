@@ -41,12 +41,12 @@ func integrationStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { db.Close(); _, _ = root.Exec(`DROP SCHEMA ` + schema + ` CASCADE`); root.Close() })
 	_, e = db.Exec(`CREATE TABLE users(id bigint PRIMARY KEY,balance numeric(20,8),frozen_balance numeric(20,8) DEFAULT 0,status text DEFAULT 'active',deleted_at timestamptz,updated_at timestamptz DEFAULT now());
- CREATE TABLE groups(id bigint PRIMARY KEY,platform text DEFAULT 'openai',status text DEFAULT 'active',subscription_type text DEFAULT 'standard',allow_image_generation bool DEFAULT true,deleted_at timestamptz);
- CREATE TABLE accounts(id bigint PRIMARY KEY,credentials jsonb,type text DEFAULT 'apikey',platform text DEFAULT 'openai',status text DEFAULT 'active',schedulable bool DEFAULT true,expires_at timestamptz,deleted_at timestamptz);
- CREATE TABLE account_groups(account_id bigint,group_id bigint);
+ CREATE TABLE groups(id bigint PRIMARY KEY,platform text DEFAULT 'video',status text DEFAULT 'active',subscription_type text DEFAULT 'standard',allow_image_generation bool DEFAULT true,deleted_at timestamptz);
+ CREATE TABLE accounts(id bigint PRIMARY KEY,credentials jsonb,type text DEFAULT 'apikey',platform text DEFAULT 'video',status text DEFAULT 'active',schedulable bool DEFAULT true,expires_at timestamptz,deleted_at timestamptz);
+ CREATE TABLE account_groups(account_id bigint,group_id bigint,PRIMARY KEY(account_id,group_id));
  CREATE TABLE api_keys(id bigint PRIMARY KEY,user_id bigint,group_id bigint,status text DEFAULT 'active',deleted_at timestamptz,expires_at timestamptz,quota numeric DEFAULT 0,quota_used numeric DEFAULT 0,rate_limit_5h numeric DEFAULT 0,rate_limit_1d numeric DEFAULT 0,rate_limit_7d numeric DEFAULT 0,usage_5h numeric DEFAULT 0,usage_1d numeric DEFAULT 0,usage_7d numeric DEFAULT 0,window_5h_start timestamptz,window_1d_start timestamptz,window_7d_start timestamptz);
  INSERT INTO users(id,balance) VALUES(1,100),(2,100);INSERT INTO groups(id) VALUES(1);
- INSERT INTO accounts(id,credentials) VALUES(1,'{"base_url":"https://laneai.dev/v1","api_key":"test-only"}');INSERT INTO account_groups VALUES(1,1);
+ INSERT INTO accounts(id,credentials) VALUES(1,'{"base_url":"https://laneai.dev/v1","api_key":"test-only","api_protocol":"laneai_task"}');INSERT INTO account_groups VALUES(1,1);
  INSERT INTO api_keys(id,user_id,group_id) VALUES(1,1,1),(2,2,1);`)
 	if e != nil {
 		t.Fatal(e)
@@ -295,5 +295,56 @@ func TestBatchAtomicRollbackAndCancel(t *testing.T) {
 	}
 	if e = s.CancelPending(ctx, 1, out[1].ID); e == nil {
 		t.Fatal("accepted upstream task cancelled unsafely")
+	}
+}
+
+func TestVideoChannelBindsAtomicallyAndIsolatesPlatforms(t *testing.T) {
+	s := integrationStore(t)
+	ctx := context.Background()
+	c := testChannel()
+	if _, e := s.DB.Exec(`DELETE FROM account_groups`); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 2; i++ {
+		if e := s.SaveChannel(ctx, c); e != nil {
+			t.Fatal(e)
+		}
+	}
+	var count int
+	if e := s.DB.QueryRow(`SELECT count(*) FROM account_groups`).Scan(&count); e != nil || count != 1 {
+		t.Fatalf("binding count=%d err=%v", count, e)
+	}
+	if _, e := s.DB.Exec(`UPDATE groups SET platform='openai' WHERE id=1`); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.SaveChannel(ctx, c); e == nil {
+		t.Fatal("chat group accepted as video")
+	}
+}
+func TestAccountCapacityUsesSmallestEnabledChannel(t *testing.T) {
+	s := integrationStore(t)
+	ctx := context.Background()
+	c := testChannel()
+	c.MaxConcurrent = 8
+	if e := s.SaveChannel(ctx, c); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.DB.Exec(`INSERT INTO groups(id) VALUES(2)`); e != nil {
+		t.Fatal(e)
+	}
+	other := testChannel()
+	other.GroupID = 2
+	other.MaxConcurrent = 1
+	if e := s.SaveChannel(ctx, other); e != nil {
+		t.Fatal(e)
+	}
+	reserveTest(t, s, "shared-capacity-1")
+	reserveTest(t, s, "shared-capacity-2")
+	w := NewWorker(s)
+	if _, e := w.claim(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := w.claim(ctx); !errors.Is(e, sql.ErrNoRows) {
+		t.Fatalf("shared account exceeded min capacity: %v", e)
 	}
 }

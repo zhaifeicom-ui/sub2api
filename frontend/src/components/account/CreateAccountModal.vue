@@ -71,6 +71,7 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-tour="account-form-platform">
+          <button type="button" @click="form.platform = 'video'" class="flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm" :class="form.platform === 'video' ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600' : ''"><PlatformIcon platform="video" size="sm" />视频</button>
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -1357,6 +1358,7 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'video'" class="rounded-lg bg-cyan-50 p-4 text-sm text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">视频上游协议：LaneAI 异步任务（laneai_task）。目前支持 laneai.dev；模型能力和按秒／按条售价在视频渠道中配置。不会调用聊天接口。</div>
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
         <div v-if="!isMultiProtocolPlatform || apiProtocol !== 'adaptive'">
@@ -1421,6 +1423,7 @@
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
+          v-if="form.platform !== 'video'"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -1447,7 +1450,7 @@
         </div>
 
         <!-- Model Restriction Section (Antigravity 已在上层条件排除) -->
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="form.platform !== 'video'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
@@ -3036,7 +3039,7 @@
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
         </div>
-        <div>
+        <div v-if="form.platform !== 'video'">
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
           <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
@@ -4017,6 +4020,7 @@ const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefin
 }
 
 const baseUrlHint = computed(() => {
+  if (form.platform === 'video') return '填写 LaneAI 根地址或 /v1 地址，当前支持 https://laneai.dev/v1'
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
@@ -4024,6 +4028,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
+  if (form.platform === 'video') return '填写 LaneAI 视频分组的上游密钥，仅保存在服务器端'
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
@@ -4032,6 +4037,7 @@ const apiKeyHint = computed(() => {
 
 // Base URL / API Key 占位符：国产供应商随账号类型变化。
 const apiKeyBaseUrlPlaceholder = computed(() => {
+  if (form.platform === 'video') return 'https://laneai.dev/v1'
   if (isMultiProtocolPlatform.value) {
     const mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
     return defaultCNBaseUrl(form.platform, mode, apiProtocol.value) || 'https://api.example.com'
@@ -4049,6 +4055,7 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
 })
 
 const apiKeyValuePlaceholder = computed(() => {
+  if (form.platform === 'video') return 'sk-...'
   switch (form.platform) {
     case 'openai':
       return 'sk-proj-...'
@@ -4784,7 +4791,7 @@ watch(
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = form.platform === 'video' ? [] : [...getModelsByPlatform(form.platform)]
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -4832,13 +4839,14 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    if (newPlatform === 'video') { accountCategory.value = 'apikey'; form.type = 'apikey'; form.concurrency = 1; upstreamBillingAutoProbeEnabled.value = false }
     // Reset base URL based on platform
     if (isCNProviderPlatform(newPlatform) || newPlatform === 'opencode_go') {
       const mode = newPlatform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, mode, apiProtocol.value)
     } else {
       apiKeyBaseUrl.value =
-        (newPlatform === 'openai')
+        newPlatform === 'video' ? 'https://laneai.dev/v1' : (newPlatform === 'openai')
           ? 'https://api.openai.com'
           : newPlatform === 'gemini'
             ? 'https://generativelanguage.googleapis.com'
@@ -4971,7 +4979,7 @@ watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
     if (newMode === 'whitelist') {
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      allowedModels.value = form.platform === 'video' ? [] : [...getModelsByPlatform(form.platform)]
     }
   }
 )
@@ -5779,6 +5787,7 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
+  if (form.platform === 'video') credentials.api_protocol = 'laneai_task'
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
   }

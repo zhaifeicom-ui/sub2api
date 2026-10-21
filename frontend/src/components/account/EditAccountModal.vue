@@ -35,7 +35,7 @@
             type="text"
             class="input"
             :placeholder="
-              account.platform === 'openai'
+              account.platform === 'video' ? 'https://laneai.dev/v1' : account.platform === 'openai'
                 ? 'https://api.openai.com'
                 : account.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
@@ -215,7 +215,7 @@
             data-lpignore="true"
             data-bwignore="true"
             :placeholder="
-              account.platform === 'openai'
+              account.platform === 'video' ? 'sk-...' : account.platform === 'openai'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
                   ? 'AIza...'
@@ -230,7 +230,7 @@
         </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
-        <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div v-if="account.platform !== 'antigravity' && account.platform !== 'video'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
@@ -1681,7 +1681,7 @@
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
         </div>
-        <div>
+        <div v-if="account?.platform !== 'video'">
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
           <input
             v-model.number="form.rate_multiplier"
@@ -1969,7 +1969,7 @@
       </div>
 
       <div
-        v-if="account?.type === 'apikey'"
+        v-if="account?.type === 'apikey' && account.platform !== 'video'"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -3325,6 +3325,7 @@ onMounted(() => {
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
+  if (props.account?.platform === 'video') return 'LaneAI 视频账号：使用 https://laneai.dev/v1；模型和售价在视频渠道中配置。'
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
@@ -3988,6 +3989,7 @@ const tempUnschedPresets = computed(() => [
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
+  if (props.account?.platform === 'video') return 'https://laneai.dev/v1'
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'

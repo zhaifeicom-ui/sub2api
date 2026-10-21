@@ -39,18 +39,30 @@ func (s *Store) SaveChannel(ctx context.Context, c Channel) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var valid bool
-	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_groups ag JOIN accounts a ON a.id=ag.account_id JOIN groups g ON g.id=ag.group_id WHERE a.id=$1 AND g.id=$2 AND a.deleted_at IS NULL AND g.deleted_at IS NULL AND a.platform='openai' AND a.type='apikey' AND g.platform='openai' AND g.subscription_type='standard')`, c.AccountID, c.GroupID).Scan(&valid)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts a CROSS JOIN groups g WHERE a.id=$1 AND g.id=$2 AND a.deleted_at IS NULL AND g.deleted_at IS NULL AND a.platform='video' AND a.type='apikey' AND g.platform='video' AND g.subscription_type='standard')`, c.AccountID, c.GroupID).Scan(&valid)
 	if err != nil {
 		return err
 	}
 	if !valid {
-		return errors.New("请绑定 OpenAI API Key 账号到 OpenAI 余额分组；视频暂不使用订阅额度")
+		return errors.New("请选择视频 API Key 账号和视频余额分组")
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO account_groups(account_id,group_id) VALUES($1,$2) ON CONFLICT(account_id,group_id) DO NOTHING`, c.AccountID, c.GroupID); err != nil {
+		return err
 	}
 	b, _ := json.Marshal(c)
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO video_studio_channels(group_id,account_id,enabled,config) VALUES($1,$2,$3,$4) ON CONFLICT(group_id) DO UPDATE SET account_id=$2,enabled=$3,config=$4,updated_at=now()`, c.GroupID, c.AccountID, c.Enabled, b)
-	return err
+	_, err = tx.ExecContext(ctx, `INSERT INTO video_studio_channels(group_id,account_id,enabled,config) VALUES($1,$2,$3,$4) ON CONFLICT(group_id) DO UPDATE SET account_id=$2,enabled=$3,config=$4,updated_at=now()`, c.GroupID, c.AccountID, c.Enabled, b)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
+
 func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT group_id FROM video_studio_channels ORDER BY group_id`)
 	if err != nil {
@@ -82,9 +94,9 @@ func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 }
 func (s *Store) KeyGroup(ctx context.Context, uid, kid int64) (int64, error) {
 	var gid int64
-	err := s.DB.QueryRowContext(ctx, `SELECT k.group_id FROM api_keys k JOIN users u ON u.id=k.user_id JOIN groups g ON g.id=k.group_id WHERE k.id=$1 AND k.user_id=$2 AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND u.deleted_at IS NULL AND u.status='active' AND g.deleted_at IS NULL AND g.status='active' AND g.platform='openai' AND g.subscription_type='standard' AND g.allow_image_generation=true`, kid, uid).Scan(&gid)
+	err := s.DB.QueryRowContext(ctx, `SELECT k.group_id FROM api_keys k JOIN users u ON u.id=k.user_id JOIN groups g ON g.id=k.group_id WHERE k.id=$1 AND k.user_id=$2 AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND u.deleted_at IS NULL AND u.status='active' AND g.deleted_at IS NULL AND g.status='active' AND g.platform='video' AND g.subscription_type='standard'=true`, kid, uid).Scan(&gid)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, errors.New("请选择属于你的有效视频余额分组密钥，并开启分组图片生成权限")
+		return 0, errors.New("请选择属于你的有效视频余额分组密钥")
 	}
 	return gid, err
 }
@@ -446,16 +458,20 @@ func (s *Store) DeleteAsset(ctx context.Context, uid int64, id string) error {
 }
 func (s *Store) Account(ctx context.Context, id int64) (string, string, error) {
 	var creds []byte
-	err := s.DB.QueryRowContext(ctx, `SELECT credentials FROM accounts WHERE id=$1 AND deleted_at IS NULL AND type='apikey'`, id).Scan(&creds)
+	err := s.DB.QueryRowContext(ctx, `SELECT credentials FROM accounts WHERE id=$1 AND deleted_at IS NULL AND type='apikey' AND platform='video'`, id).Scan(&creds)
 	if err != nil {
 		return "", "", err
 	}
 	var c struct {
-		Base string `json:"base_url"`
-		Key  string `json:"api_key"`
+		Base     string `json:"base_url"`
+		Key      string `json:"api_key"`
+		Protocol string `json:"api_protocol"`
 	}
 	if err = json.Unmarshal(creds, &c); err != nil {
 		return "", "", err
+	}
+	if c.Protocol != "laneai_task" {
+		return "", "", errors.New("视频上游协议未适配")
 	}
 	if c.Key == "" {
 		return "", "", fmt.Errorf("上游账号没有 API Key")

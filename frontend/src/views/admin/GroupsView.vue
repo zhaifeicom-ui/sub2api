@@ -521,6 +521,7 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <div v-if="createForm.platform === 'video'" class="rounded-lg bg-cyan-50 p-4 text-sm text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">视频分组使用余额，按模型的秒数／条数收费；聊天倍率和图片开关不参与视频计费。保存后到 <RouterLink to="/video-studio" class="underline">视频工作台 → 渠道与计费</RouterLink> 绑定账号、读取上游成本并设置售价。</div>
         <div
           v-if="createForm.platform === 'deepseek'"
           class="rounded-lg border border-teal-200 bg-teal-50/70 p-3 dark:border-teal-900 dark:bg-teal-950/20"
@@ -625,7 +626,7 @@
           <p class="input-hint">{{ t("admin.groups.copyAccounts.hint") }}</p>
         </div>
         <template v-if="!authStore.isSimpleMode">
-        <div>
+        <div v-if="createForm.platform !== 'video'">
           <label class="input-label">{{
             t("admin.groups.form.rateMultiplier")
           }}</label>
@@ -728,7 +729,7 @@
             }}</label>
             <Select
               v-model="createForm.subscription_type"
-              :options="subscriptionTypeOptions"
+              :options="createForm.platform === 'video' ? subscriptionTypeOptions.filter(o => o.value === 'standard') : subscriptionTypeOptions"
             />
             <p class="input-hint">
               {{ t("admin.groups.subscription.typeHint") }}
@@ -2173,6 +2174,8 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
         </div>
+        <div v-if="editForm.platform === 'video'" class="rounded-lg bg-cyan-50 p-4 text-sm text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">视频分组使用余额，按模型的秒数／条数收费；聊天倍率和图片开关不参与视频计费。保存后到 <RouterLink to="/video-studio" class="underline">视频工作台 → 渠道与计费</RouterLink> 绑定账号、读取上游成本并设置售价。</div>
+        <VideoStudioSettings v-if="editForm.platform === 'video' && editingGroup" :group-id="editingGroup.id" />
         <div
           v-if="editForm.platform === 'deepseek'"
           class="rounded-lg border border-teal-200 bg-teal-50/70 p-3 dark:border-teal-900 dark:bg-teal-950/20"
@@ -2279,7 +2282,7 @@
             {{ t("admin.groups.copyAccounts.hintEdit") }}
           </p>
         </div>
-        <div>
+        <div v-if="editForm.platform !== 'video'">
           <label class="input-label">{{
             t("admin.groups.form.rateMultiplier")
           }}</label>
@@ -2382,7 +2385,7 @@
             }}</label>
             <Select
               v-model="editForm.subscription_type"
-              :options="subscriptionTypeOptions"
+              :options="editForm.platform === 'video' ? subscriptionTypeOptions.filter(o => o.value === 'standard') : subscriptionTypeOptions"
               :disabled="true"
             />
             <p class="input-hint">
@@ -4317,6 +4320,7 @@ import {
   GROUP_PLATFORM_OPTIONS,
 } from "@/constants/platforms";
 import type { Column } from "@/components/common/types";
+import VideoStudioSettings from "@/components/video/VideoStudioSettings.vue";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
 import DataTable from "@/components/common/DataTable.vue";
@@ -4654,7 +4658,7 @@ const platformFilterOptions = computed(() => [
 ]);
 
 const compositeRoutePlatformOptions = computed(() => [
-  ...CONCRETE_PLATFORM_OPTIONS,
+  ...CONCRETE_PLATFORM_OPTIONS.filter(option => option.value !== "video"),
 ]);
 
 const compositeRouteEndpointOptions = computed(() => [
@@ -6925,4 +6929,6 @@ onUnmounted(() => {
   accountSearchRunner.clearAll();
   clearAllAccountSearchState();
 });
+watch(() => createForm.platform, platform => { if (platform === 'video') { createForm.subscription_type = 'standard'; createForm.rate_multiplier = 1 } });
+watch(() => editForm.platform, platform => { if (platform === 'video') { editForm.subscription_type = 'standard'; editForm.rate_multiplier = 1 } });
 </script>

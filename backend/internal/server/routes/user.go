@@ -92,6 +92,8 @@ func RegisterUserRoutes(
 			vs.GET("/assets", h.VideoStudio.Assets)
 			vs.POST("/assets", h.VideoStudio.Upload)
 			vs.DELETE("/assets/:id", h.VideoStudio.DeleteAsset)
+			vs.GET("/channel-choices", h.VideoStudio.ChannelChoices)
+			vs.POST("/catalog/import", h.VideoStudio.ImportCatalog)
 			vs.GET("/settings", h.VideoStudio.Settings)
 			vs.PUT("/settings", h.VideoStudio.SaveSettings)
 			vs.GET("/reviews", h.VideoStudio.Reviews)

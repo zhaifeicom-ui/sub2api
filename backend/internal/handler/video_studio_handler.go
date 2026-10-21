@@ -78,7 +78,7 @@ func videoReply(c *gin.Context, data any, err error) {
 	c.JSON(code, gin.H{"code": code, "message": msg})
 }
 func (h *VideoStudioHandler) Options(c *gin.Context) {
-	rows, err := h.store.DB.QueryContext(c.Request.Context(), `SELECT k.id,k.name,g.id,g.name FROM api_keys k JOIN groups g ON k.group_id=g.id JOIN video_studio_channels v ON v.group_id=g.id WHERE k.user_id=$1 AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND g.deleted_at IS NULL AND g.status='active' AND g.allow_image_generation AND g.subscription_type='standard' AND v.enabled ORDER BY g.id,k.id`, videoUser(c))
+	rows, err := h.store.DB.QueryContext(c.Request.Context(), `SELECT k.id,k.name,g.id,g.name FROM api_keys k JOIN groups g ON k.group_id=g.id JOIN video_studio_channels v ON v.group_id=g.id WHERE k.user_id=$1 AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND g.deleted_at IS NULL AND g.status='active' AND g.platform='video' AND g.subscription_type='standard' AND v.enabled ORDER BY g.id,k.id`, videoUser(c))
 	if err != nil {
 		videoReply(c, nil, err)
 		return
@@ -121,7 +121,7 @@ func (h *VideoStudioHandler) Options(c *gin.Context) {
 			if key.Group != nil && key.Group.ModelAllowlist.Enabled && !key.Group.ModelAllowlist.Allows(m.ID) {
 				continue
 			}
-			m.CostCNY = nil
+			m = videostudio.PublicModel(m)
 			opts[i].Models = append(opts[i].Models, m)
 		}
 	}
@@ -194,7 +194,7 @@ func (h *VideoStudioHandler) prepareRequest(c *gin.Context, r videostudio.Reques
 }
 func (h *VideoStudioHandler) Quote(c *gin.Context) {
 	_, _, p, e := h.prepare(c)
-	p.Model.CostCNY = nil
+	p.Model = videostudio.PublicModel(p.Model)
 	p.UpstreamCostCNY = 0
 	videoReply(c, p, e)
 }
@@ -212,7 +212,7 @@ func (h *VideoStudioHandler) Submit(c *gin.Context) {
 	videoReply(c, t, e)
 }
 func sanitizeVideoTask(t *videostudio.Task) {
-	t.Pricing.Model.CostCNY = nil
+	t.Pricing.Model = videostudio.PublicModel(t.Pricing.Model)
 	t.Pricing.UpstreamCostCNY = 0
 }
 func (h *VideoStudioHandler) Tasks(c *gin.Context) {
@@ -388,7 +388,7 @@ func (h *VideoStudioHandler) Plan(c *gin.Context) {
 		return
 	}
 	key, e := h.keys.GetByID(c.Request.Context(), req.KeyID)
-	if e != nil || key.UserID != videoUser(c) || !key.IsActive() || key.IsExpired() {
+	if e != nil || key.UserID != videoUser(c) || !key.IsActive() || key.IsExpired() || key.Group == nil || key.Group.Platform == "video" {
 		videoReply(c, nil, errors.New("请选择你的有效聊天密钥"))
 		return
 	}

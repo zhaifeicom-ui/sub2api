@@ -17,11 +17,12 @@ var ErrConflict = errors.New("内容已更新或幂等键冲突，请刷新后�
 var ErrFunds = errors.New("余额或密钥额度不足")
 
 type Model struct {
+	Rules      []Tariff           `json:"rules,omitempty"`
 	ID         string             `json:"id"`
 	Label      string             `json:"label"`
 	Mode       string             `json:"mode"` // second or job; prices in station balance units
 	Rates      map[string]float64 `json:"rates"`
-	CostCNY    map[string]float64 `json:"cost_cny"`
+	CostCNY    map[string]float64 `json:"cost_cny,omitempty"`
 	MinSeconds int                `json:"min_seconds"`
 	MaxSeconds int                `json:"max_seconds"`
 	MaxImages  int                `json:"max_images"`
@@ -130,13 +131,25 @@ func (c Channel) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, m := range c.Models {
-		if strings.TrimSpace(m.ID) == "" || seen[m.ID] || (m.Mode != "second" && m.Mode != "job") || m.MinSeconds < 1 || m.MaxSeconds < m.MinSeconds || m.MaxSeconds > 30 || m.MaxImages < 0 || m.MaxImages > 9 || m.MaxVideos < 0 || m.MaxVideos > 3 || m.MaxAudios < 0 || m.MaxAudios > 3 || len(m.Rates) == 0 {
+		if strings.TrimSpace(m.ID) == "" || seen[m.ID] || (m.Mode != "second" && m.Mode != "job") || m.MinSeconds < 1 || m.MaxSeconds < m.MinSeconds || m.MaxSeconds > 600 || m.MaxImages < 0 || m.MaxImages > 9 || m.MaxVideos < 0 || m.MaxVideos > 3 || m.MaxAudios < 0 || m.MaxAudios > 3 || len(m.Rates) == 0 || len(m.Rules) > 100 {
 			return errors.New("模型配置不合法")
 		}
 		seen[m.ID] = true
+		for i, a := range m.Rules {
+			for _, b := range m.Rules[:i] {
+				if a.Resolution == b.Resolution && a.MinSeconds <= b.MaxSeconds && b.MinSeconds <= a.MaxSeconds && (a.Audio == "any" || b.Audio == "any" || a.Audio == b.Audio) && (a.Reference == "any" || b.Reference == "any" || a.Reference == b.Reference) {
+					return errors.New("价格规则条件重叠，请拆成互斥的时长、声音或参考素材档位")
+				}
+			}
+		}
+		for _, rule := range m.Rules {
+			if err := rule.validate(m); err != nil {
+				return err
+			}
+		}
 		for r, p := range m.Rates {
-			if (r != "768p" && r != "2k") || p <= 0 || p > 10000 || math.IsNaN(p) || math.IsInf(p, 0) {
-				return errors.New("请填写有效的 768p/2k 售价")
+			if !validResolution(r) || p <= 0 || p > 10000 || math.IsNaN(p) || math.IsInf(p, 0) {
+				return errors.New("请填写有效的清晰度售价")
 			}
 			cost, ok := m.CostCNY[r]
 			if !ok || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
@@ -172,7 +185,17 @@ func Quote(c Channel, r Request) (Price, error) {
 				p *= float64(r.Input.Duration)
 				cost *= float64(r.Input.Duration)
 			}
-			return Price{Amount: math.Round(p*1e8) / 1e8, UpstreamCostCNY: cost, Model: m}, nil
+			if len(m.Rules) > 0 {
+				var err error
+				p, cost, err = quoteRules(m, r.Input)
+				if err != nil {
+					return Price{}, err
+				}
+			}
+			if math.Round(p*1e8) <= 0 {
+				return Price{}, errors.New("售价低于最小计费单位，请管理员修正")
+			}
+			return Price{Amount: math.Round(p*1e8) / 1e8, UpstreamCostCNY: math.Round(cost*1e8) / 1e8, Model: m}, nil
 		}
 	}
 	return Price{}, fmt.Errorf("模型 %s 未在此视频分组开放", r.Model)
@@ -183,10 +206,18 @@ func validateDocument(d Document) error {
 	}
 	seen := map[string]bool{}
 	for _, s := range d.Shots {
-		if s.ID == "" || seen[s.ID] || s.Duration < 1 || s.Duration > 30 || len([]rune(s.Prompt)) > 7000 || len(s.Images) > 9 {
+		if s.ID == "" || seen[s.ID] || s.Duration < 1 || s.Duration > 600 || len([]rune(s.Prompt)) > 7000 || len(s.Images) > 9 {
 			return errors.New("镜头 ID、时长或提示词不合法")
 		}
 		seen[s.ID] = true
 	}
 	return nil
+}
+
+func validResolution(r string) bool {
+	switch r {
+	case "480p", "720p", "768p", "1080p", "2k", "4k":
+		return true
+	}
+	return false
 }

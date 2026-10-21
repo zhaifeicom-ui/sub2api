@@ -1,6 +1,12 @@
 import { apiClient, buildApiUrl } from './client'
 
+export interface VideoTariff {
+ resolution: string; min_seconds: number; max_seconds: number; audio: 'any' | 'on' | 'off'; reference: 'any' | 'with' | 'without'
+ mode: 'second' | 'job'; rate: number; cost_cny?: number; minimum_seconds?: number; step_seconds?: number
+ base_fee?: number; base_cost_cny?: number; image_fee?: number; image_cost_cny?: number; video_fee?: number; video_cost_cny?: number; audio_fee?: number; audio_cost_cny?: number
+}
 export interface VideoModel {
+  rules?: VideoTariff[]
   id: string; label: string; mode: 'second' | 'job'; rates: Record<string, number>
   cost_cny?: Record<string, number>; min_seconds: number; max_seconds: number
   max_images: number; max_videos: number; max_audios: number; audio: boolean
@@ -46,6 +52,8 @@ export const videoAPI = {
   upload: async (file: File) => { const form = new FormData(); form.append('file', file); return (await apiClient.post<VideoAsset>(`${root}/assets`, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 90000 })).data },
   deleteAsset: async (id: string) => apiClient.delete(`${root}/assets/${id}`),
   assetURL: (id: string) => buildApiUrl(`/video-assets/${encodeURIComponent(id)}`),
+  channelChoices: async () => (await apiClient.get<{ groups: { id: number; name: string }[]; accounts: { id: number; name: string }[] }>(`${root}/channel-choices`)).data,
+  importCatalog: async (account_id: number) => (await apiClient.post<VideoModel[]>(`${root}/catalog/import`, { account_id }, { timeout: 65000 })).data,
   settings: async () => (await apiClient.get<VideoChannel[]>(`${root}/settings`)).data,
   saveSettings: async (c: VideoChannel) => apiClient.put(`${root}/settings`, c),
   reviews: async () => (await apiClient.get<VideoTask[]>(`${root}/reviews`)).data,
@@ -53,8 +61,17 @@ export const videoAPI = {
 }
 
 export const videoStatus: Record<string, string> = { pending: '等待提交', submitting: '提交中', queued: '排队中', in_progress: '生成中', completed: '已完成', failed: '失败 · 已退款', needs_review: '待核对 · 金额冻结' }
-export function estimateVideo(model: VideoModel | undefined, resolution: string, seconds: number): number {
+export function estimateVideo(model: VideoModel | undefined, resolution: string, seconds: number, input?: VideoInput): number {
   if (!model || !Number.isFinite(seconds) || seconds < model.min_seconds || seconds > model.max_seconds) return 0
+  if (model.rules?.length) {
+    if (!input) return 0
+    const hasRef = input.images.length + input.videos.length + input.audios.length > 0
+    const rules = model.rules.filter(r => r.resolution === resolution && seconds >= r.min_seconds && seconds <= r.max_seconds && (r.audio === 'any' || (r.audio === 'on') === input.generate_audio) && (r.reference === 'any' || (r.reference === 'with') === hasRef))
+    if (rules.length !== 1) return 0
+    const r = rules[0]!; let units = 1
+    if (r.mode === 'second') { units = Math.max(seconds, r.minimum_seconds || 0); if (r.step_seconds) units = Math.ceil(units / r.step_seconds) * r.step_seconds }
+    return Math.round(((r.base_fee || 0) + r.rate * units + (r.image_fee || 0) * input.images.length + (r.video_fee || 0) * input.videos.length + (r.audio_fee || 0) * input.audios.length) * 1e8) / 1e8
+  }
   const price = model.rates[resolution]
   return price === undefined ? 0 : Math.round(price * (model.mode === 'second' ? seconds : 1) * 1e8) / 1e8
 }
@@ -63,7 +80,7 @@ export function initialChannel(): VideoChannel {
   const shared = { min_seconds: 4, max_seconds: 15, max_images: 9, max_videos: 3, max_audios: 3, audio: true }
   return { group_id: 0, account_id: 0, enabled: false, public_base_url: window.location.origin, max_concurrent: 1, models: [
     { ...shared, id: 'MiniMax-H3', label: 'MiniMax H3 · 按秒', mode: 'second', max_seconds: 30, max_videos: 1, max_audios: 1, rates: { '768p': 0.22, '2k': 0.35 }, cost_cny: { '768p': 0.22, '2k': 0.35 } },
-    { ...shared, id: 'MiniMax-H3 2K', label: 'MiniMax H3 2K · 按条', mode: 'job', rates: { '2k': 2.2 }, cost_cny: { '2k': 2.2 } },
-    { ...shared, id: 'MiniMax-H3 768P', label: 'MiniMax H3 768P · 按条', mode: 'job', rates: { '768p': 1.5 }, cost_cny: { '768p': 1.5 } }
+    { ...shared, min_seconds: 1, id: 'MiniMax-H3 2K', label: 'MiniMax H3 2K · 按条', mode: 'job', rates: { '2k': 2.2 }, cost_cny: { '2k': 2.2 } },
+    { ...shared, min_seconds: 1, id: 'MiniMax-H3 768P', label: 'MiniMax H3 768P · 按条', mode: 'job', rates: { '768p': 1.5 }, cost_cny: { '768p': 1.5 } }
   ] }
 }

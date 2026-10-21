@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CONCRETE_PLATFORM_OPTIONS, GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
 
 const concretePlatforms = [
+  'video',
   'anthropic',
   'openai',
   'gemini',

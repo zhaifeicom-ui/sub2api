@@ -21,6 +21,7 @@
         </div>
       </div>
 
+      <VideoApiDocs v-else-if="platform === 'video'" :base-url="baseUrl" :api-key="apiKey" />
       <!-- Platform-specific content -->
       <template v-else>
         <!-- Description -->
@@ -258,6 +259,7 @@
 import { ref, computed, h, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
+import VideoApiDocs from '@/components/video/VideoApiDocs.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
@@ -1244,6 +1246,7 @@ function generateRoutedCodexFiles(
   const preferredModel = preferredModels[platform] || ''
   const model = selectCodexCatalogModel(preferredModel)
   const labels: Record<GroupPlatform, string> = {
+    video: 'Video',
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     gemini: 'Gemini',

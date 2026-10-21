@@ -411,6 +411,11 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if input.Platform == PlatformVideo {
+		if input.Type != AccountTypeAPIKey || input.Credentials["api_protocol"] != "laneai_task" {
+			return nil, errors.New("视频账号仅支持 API Key 和已适配的 laneai_task 协议")
+		}
+	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -575,6 +580,19 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if account.Platform == PlatformVideo {
+		effectiveType := account.Type
+		if input.Type != "" {
+			effectiveType = input.Type
+		}
+		creds := account.Credentials
+		if input.Credentials != nil {
+			creds = input.Credentials
+		}
+		if effectiveType != AccountTypeAPIKey || creds["api_protocol"] != "laneai_task" {
+			return nil, errors.New("视频账号仅支持 API Key 和 laneai_task 协议")
+		}
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
