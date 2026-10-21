@@ -41,7 +41,7 @@ func (r *settingRepository) ListManagedPolicy(ctx context.Context) ([]service.Ma
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var e service.ManagedPolicyEvent
 		var ids []byte
