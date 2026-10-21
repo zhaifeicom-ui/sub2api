@@ -108,7 +108,16 @@ func TestLaneTaskMaterialContract(t *testing.T) {
 			if p.Model != model {
 				t.Fatal("model changed")
 			}
-			for field, kind := range map[string]string{"images": "image", "videos": "video", "audios": "audio"} {
+			for field, kind := range map[string]string{"images": "image", "videos": "video"} {
+				var refs []string
+				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
+					t.Fatalf("%s must use URL strings: %v", field, err)
+				}
+				if len(refs) != 1 || refs[0] != "https://station.example/"+kind {
+					t.Fatalf("wrong %s: %+v", field, refs)
+				}
+			}
+			for field, kind := range map[string]string{"audios": "audio"} {
 				var refs []struct {
 					URL string `json:"url"`
 				}

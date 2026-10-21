@@ -268,8 +268,9 @@ func (w *Worker) process(ctx context.Context, id string) {
 	}
 }
 
-// LaneAI forwards material references as objects; URL strings are rejected by
-// its video backend even though the web form uses string arrays.
+// LaneAI's public video form sends image and video references as URL strings.
+// Audio references use MaterialReference objects (the upstream's audio parser
+// rejects strings with a Go type-unmarshal error).
 type laneMaterialReference struct {
 	URL string `json:"url"`
 }
@@ -287,7 +288,7 @@ func laneTaskPayload(model string, input Input, images, videos, audios []string)
 		"prompt": input.Prompt, "duration": input.Duration,
 		"resolution": strings.ToLower(input.Resolution), "aspect_ratio": input.AspectRatio,
 		"generate_audio": input.GenerateAudio,
-		"images":         laneReferences(images), "videos": laneReferences(videos), "audios": laneReferences(audios),
+		"images":         append([]string{}, images...), "videos": append([]string{}, videos...), "audios": laneReferences(audios),
 	}}
 }
 
