@@ -52,7 +52,7 @@ func integrationStore(t *testing.T) *Store {
 	if e != nil {
 		t.Fatal(e)
 	}
-	migration, e := os.ReadFile("../../migrations/239_video_studio.sql")
+	migration, e := os.ReadFile("../../migrations/241_video_studio.sql")
 	if e != nil {
 		t.Fatal(e)
 	}
