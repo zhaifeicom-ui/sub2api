@@ -90,6 +90,47 @@ func TestLaneTaskContractUsesNestedInput(t *testing.T) {
 		t.Fatalf("%+v %d %v", out, status, e)
 	}
 }
+
+func TestLaneTaskMaterialContract(t *testing.T) {
+	for _, model := range []string{"MiniMax-H3", "MiniMax-H3 768P", "MiniMax-H3 2K"} {
+		t.Run(model, func(t *testing.T) {
+			b, err := json.Marshal(laneTaskPayload(model, testRequest().Input, []string{"https://station.example/image"}, []string{"https://station.example/video"}, []string{"https://station.example/audio"}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var p struct {
+				Model string                     `json:"model"`
+				Input map[string]json.RawMessage `json:"input"`
+			}
+			if err := json.Unmarshal(b, &p); err != nil {
+				t.Fatal(err)
+			}
+			if p.Model != model {
+				t.Fatal("model changed")
+			}
+			for field, kind := range map[string]string{"images": "image", "videos": "video", "audios": "audio"} {
+				var refs []struct {
+					URL string `json:"url"`
+				}
+				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
+					t.Fatalf("%s requires objects: %v", field, err)
+				}
+				if len(refs) != 1 || refs[0].URL != "https://station.example/"+kind {
+					t.Fatalf("wrong %s: %+v", field, refs)
+				}
+			}
+		})
+	}
+	b, err := json.Marshal(laneTaskPayload("MiniMax-H3", testRequest().Input, nil, nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"images", "videos", "audios"} {
+		if !strings.Contains(string(b), `"`+field+`":[]`) {
+			t.Fatalf("empty references must remain arrays: %s", b)
+		}
+	}
+}
 func TestProjectValidation(t *testing.T) {
 	d := Document{Shots: []Shot{{ID: "one", Duration: 5}, {ID: "one", Duration: 5}}}
 	if validateDocument(d) == nil {

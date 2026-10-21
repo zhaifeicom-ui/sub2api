@@ -199,7 +199,7 @@ func (w *Worker) process(ctx context.Context, id string) {
 			w.fail(ctx, t, e.Error())
 			return
 		}
-		payload := map[string]any{"model": t.Request.Model, "input": map[string]any{"prompt": input.Prompt, "duration": input.Duration, "resolution": strings.ToLower(input.Resolution), "aspect_ratio": input.AspectRatio, "generate_audio": input.GenerateAudio, "images": imgs, "videos": vids, "audios": audio}}
+		payload := laneTaskPayload(t.Request.Model, input, imgs, vids, audio)
 		out, status, e := w.call(ctx, base, key, http.MethodPost, "/v1/task/submit", payload)
 		// Only an explicit 4xx rejection (except timeout/conflict) proves no job was accepted.
 		if status >= 400 && status < 500 && status != 408 && status != 409 {
@@ -267,6 +267,30 @@ func (w *Worker) process(ctx context.Context, id string) {
 		w.review(id, "未知上游任务状态，需要核对："+out.Status)
 	}
 }
+
+// LaneAI forwards material references as objects; URL strings are rejected by
+// its video backend even though the web form uses string arrays.
+type laneMaterialReference struct {
+	URL string `json:"url"`
+}
+
+func laneReferences(urls []string) []laneMaterialReference {
+	refs := make([]laneMaterialReference, 0, len(urls))
+	for _, raw := range urls {
+		refs = append(refs, laneMaterialReference{URL: raw})
+	}
+	return refs
+}
+
+func laneTaskPayload(model string, input Input, images, videos, audios []string) map[string]any {
+	return map[string]any{"model": model, "input": map[string]any{
+		"prompt": input.Prompt, "duration": input.Duration,
+		"resolution": strings.ToLower(input.Resolution), "aspect_ratio": input.AspectRatio,
+		"generate_audio": input.GenerateAudio,
+		"images":         laneReferences(images), "videos": laneReferences(videos), "audios": laneReferences(audios),
+	}}
+}
+
 func safeMessage(msg string, status int) string {
 	msg = strings.TrimSpace(msg)
 	if msg == "" {
