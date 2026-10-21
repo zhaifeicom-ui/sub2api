@@ -108,24 +108,18 @@ func TestLaneTaskMaterialContract(t *testing.T) {
 			if p.Model != model {
 				t.Fatal("model changed")
 			}
-			for field, kind := range map[string]string{"images": "image", "videos": "video"} {
-				var refs []string
+			for field, kind := range map[string]string{"materials": "image", "video_references": "video", "audio_references": "audio"} {
+				var refs []laneMaterialReference
 				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
-					t.Fatalf("%s must use URL strings: %v", field, err)
-				}
-				if len(refs) != 1 || refs[0] != "https://station.example/"+kind {
-					t.Fatalf("wrong %s: %+v", field, refs)
-				}
-			}
-			for field, kind := range map[string]string{"audios": "audio"} {
-				var refs []struct {
-					URL string `json:"url"`
-				}
-				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
-					t.Fatalf("%s requires objects: %v", field, err)
+					t.Fatalf("%s must use MaterialReference objects: %v", field, err)
 				}
 				if len(refs) != 1 || refs[0].URL != "https://station.example/"+kind {
 					t.Fatalf("wrong %s: %+v", field, refs)
+				}
+			}
+			for _, field := range []string{"images", "videos", "audios"} {
+				if _, ok := p.Input[field]; ok {
+					t.Fatalf("legacy field %s must not be sent", field)
 				}
 			}
 		})
@@ -134,9 +128,28 @@ func TestLaneTaskMaterialContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"images", "videos", "audios"} {
-		if !strings.Contains(string(b), `"`+field+`":[]`) {
-			t.Fatalf("empty references must remain arrays: %s", b)
+	for _, field := range []string{"materials", "video_references", "audio_references", "images", "videos", "audios"} {
+		if strings.Contains(string(b), `"`+field+`"`) {
+			t.Fatalf("empty reference field %s must be omitted: %s", field, b)
+		}
+	}
+}
+
+func TestSecureOutputURLUpgradesOnlyLaneAIHTTP(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		bad   bool
+	}{
+		{"http://laneai.dev/api/media/async/task?sig=x", "https://laneai.dev/api/media/async/task?sig=x", false},
+		{"https://fileview.site/video.mp4", "https://fileview.site/video.mp4", false},
+		{"http://example.com/video.mp4", "", true},
+		{"https://user:pass@laneai.dev/video.mp4", "", true},
+	}
+	for _, tc := range tests {
+		got, err := secureOutputURL(tc.input)
+		if (err != nil) != tc.bad || got != tc.want {
+			t.Fatalf("secureOutputURL(%q) = %q, %v; want %q, bad=%v", tc.input, got, err, tc.want, tc.bad)
 		}
 	}
 }

@@ -242,12 +242,13 @@ func (w *Worker) process(ctx context.Context, id string) {
 		if len(outputs) == 0 && out.Result.URL != "" {
 			outputs = []string{out.Result.URL}
 		}
-		for _, raw := range outputs {
-			u, e := url.Parse(raw)
-			if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
+		for i, raw := range outputs {
+			secureURL, err := secureOutputURL(raw)
+			if err != nil {
 				w.review(id, "上游视频地址不合法，请管理员核对")
 				return
 			}
+			outputs[i] = secureURL
 		}
 		if len(outputs) == 0 {
 			w.review(id, "上游显示成功但缺少视频地址，请管理员核对")
@@ -268,9 +269,8 @@ func (w *Worker) process(ctx context.Context, id string) {
 	}
 }
 
-// LaneAI's public video form sends image and video references as URL strings.
-// Audio references use MaterialReference objects (the upstream's audio parser
-// rejects strings with a Go type-unmarshal error).
+// LaneAI's endpoint accepts these reference URL objects under its internal
+// materials, video_references, and audio_references input fields.
 type laneMaterialReference struct {
 	URL string `json:"url"`
 }
@@ -284,12 +284,42 @@ func laneReferences(urls []string) []laneMaterialReference {
 }
 
 func laneTaskPayload(model string, input Input, images, videos, audios []string) map[string]any {
-	return map[string]any{"model": model, "input": map[string]any{
+	upstreamInput := map[string]any{
 		"prompt": input.Prompt, "duration": input.Duration,
 		"resolution": strings.ToLower(input.Resolution), "aspect_ratio": input.AspectRatio,
 		"generate_audio": input.GenerateAudio,
-		"images":         append([]string{}, images...), "videos": append([]string{}, videos...), "audios": laneReferences(audios),
-	}}
+	}
+	// LaneAI's task endpoint maps these fields to h3comfy reference structs.
+	// The public sample's images/videos/audios URL arrays are currently rejected
+	// as strings; the live endpoint accepts MaterialReference objects under its
+	// internal field names instead.
+	if len(images) > 0 {
+		upstreamInput["materials"] = laneReferences(images)
+	}
+	if len(videos) > 0 {
+		upstreamInput["video_references"] = laneReferences(videos)
+	}
+	if len(audios) > 0 {
+		upstreamInput["audio_references"] = laneReferences(audios)
+	}
+	return map[string]any{"model": model, "input": upstreamInput}
+}
+
+func secureOutputURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Hostname() == "" || u.User != nil {
+		return "", errors.New("invalid upstream media URL")
+	}
+	// LaneAI currently returns signed media links using http://laneai.dev, while
+	// the exact same signed URL is served over HTTPS. Upgrade only that known
+	// provider host; never accept arbitrary insecure output links.
+	if u.Scheme == "http" && strings.EqualFold(u.Hostname(), "laneai.dev") && u.Port() == "" {
+		u.Scheme = "https"
+	}
+	if u.Scheme != "https" {
+		return "", errors.New("upstream media URL must use HTTPS")
+	}
+	return u.String(), nil
 }
 
 func safeMessage(msg string, status int) string {
