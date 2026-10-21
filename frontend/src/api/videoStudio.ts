@@ -28,11 +28,11 @@ export interface VideoTask {
 }
 export interface VideoShot {
   id: string; title: string; prompt: string; duration: number; camera: string; dialogue: string
-  sound: string; first_frame: string; images: string[]; task_id: string
+  sound: string; first_frame: string; images: string[]; videos?: string[]; audios?: string[]; task_id: string
 }
 export interface VideoProject {
   id: string; revision: number; updated_at?: string
-  document: { title: string; outline: string; character_images: string[]; shots: VideoShot[] }
+  document: { output?: { key_id: number; model: string; resolution: string; aspect_ratio: string; generate_audio: boolean }; title: string; outline: string; character_images: string[]; shots: VideoShot[] }
 }
 export interface VideoAsset { id: string; name: string; mime: string; bytes: number }
 const root = '/video-studio'
@@ -75,7 +75,7 @@ export function estimateVideo(model: VideoModel | undefined, resolution: string,
   const price = model.rates[resolution]
   return price === undefined ? 0 : Math.round(price * (model.mode === 'second' ? seconds : 1) * 1e8) / 1e8
 }
-export function emptyShot(): VideoShot { return { id: crypto.randomUUID(), title: '新镜头', prompt: '', duration: 5, camera: '', dialogue: '', sound: '', first_frame: '', images: [], task_id: '' } }
+export function emptyShot(): VideoShot { return { id: crypto.randomUUID(), title: '新镜头', prompt: '', duration: 5, camera: '', dialogue: '', sound: '', first_frame: '', images: [], videos: [], audios: [], task_id: '' } }
 export function initialChannel(): VideoChannel {
   const shared = { min_seconds: 4, max_seconds: 15, max_images: 9, max_videos: 3, max_audios: 3, audio: true }
   return { group_id: 0, account_id: 0, enabled: false, public_base_url: window.location.origin, max_concurrent: 1, models: [

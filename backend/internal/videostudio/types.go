@@ -92,13 +92,23 @@ type Shot struct {
 	Sound      string   `json:"sound"`
 	FirstFrame string   `json:"first_frame"`
 	Images     []string `json:"images"`
+	Videos     []string `json:"videos"`
+	Audios     []string `json:"audios"`
 	TaskID     string   `json:"task_id"`
 }
+type ProjectOutput struct {
+	KeyID         int64  `json:"key_id"`
+	Model         string `json:"model"`
+	Resolution    string `json:"resolution"`
+	AspectRatio   string `json:"aspect_ratio"`
+	GenerateAudio bool   `json:"generate_audio"`
+}
 type Document struct {
-	Title           string   `json:"title"`
-	Outline         string   `json:"outline"`
-	CharacterImages []string `json:"character_images"`
-	Shots           []Shot   `json:"shots"`
+	Output          *ProjectOutput `json:"output,omitempty"`
+	Title           string         `json:"title"`
+	Outline         string         `json:"outline"`
+	CharacterImages []string       `json:"character_images"`
+	Shots           []Shot         `json:"shots"`
 }
 type Project struct {
 	ID        string    `json:"id"`
@@ -206,7 +216,7 @@ func validateDocument(d Document) error {
 	}
 	seen := map[string]bool{}
 	for _, s := range d.Shots {
-		if s.ID == "" || seen[s.ID] || s.Duration < 1 || s.Duration > 600 || len([]rune(s.Prompt)) > 7000 || len(s.Images) > 9 {
+		if s.ID == "" || seen[s.ID] || s.Duration < 1 || s.Duration > 600 || len([]rune(s.Prompt)) > 7000 || len(s.Images) > 9 || len(s.Videos) > 3 || len(s.Audios) > 3 {
 			return errors.New("镜头 ID、时长或提示词不合法")
 		}
 		seen[s.ID] = true

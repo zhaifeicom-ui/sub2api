@@ -181,8 +181,8 @@ func (h *VideoStudioHandler) prepareRequest(c *gin.Context, r videostudio.Reques
 		return r, ch, price, errors.New("视频分组已关闭")
 	}
 	r.Input.Resolution = strings.ToLower(r.Input.Resolution)
-	for _, ids := range [][]string{r.Input.Images, r.Input.Videos, r.Input.Audios} {
-		if _, err = h.store.AssetURLs(c.Request.Context(), videoUser(c), ids, ch.PublicBaseURL); err != nil {
+	for kind, ids := range map[string][]string{"image": r.Input.Images, "video": r.Input.Videos, "audio": r.Input.Audios} {
+		if _, err = h.store.AssetURLsForType(c.Request.Context(), videoUser(c), ids, ch.PublicBaseURL, kind); err != nil {
 			return r, ch, price, err
 		}
 	}
@@ -447,6 +447,8 @@ func (h *VideoStudioHandler) Plan(c *gin.Context) {
 		s.ID = "shot_" + strconv.FormatInt(time.Now().UnixNano(), 36) + "_" + strconv.Itoa(i)
 		s.TaskID = ""
 		s.Images = nil
+		s.Videos = nil
+		s.Audios = nil
 		if s.FirstFrame != "" {
 			s.Prompt += "\n首帧构图：" + s.FirstFrame
 		}

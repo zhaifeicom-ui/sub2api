@@ -361,6 +361,8 @@ func (s *Store) SaveProject(ctx context.Context, uid int64, p Project) (Project,
 	ids := append([]string{}, p.Document.CharacterImages...)
 	for _, shot := range p.Document.Shots {
 		ids = append(ids, shot.Images...)
+		ids = append(ids, shot.Videos...)
+		ids = append(ids, shot.Audios...)
 		if shot.FirstFrame != "" {
 			ids = append(ids, shot.FirstFrame)
 		}
@@ -427,12 +429,19 @@ func (s *Store) PutAsset(ctx context.Context, uid int64, name, mime string, b []
 	return a, tx.Commit()
 }
 func (s *Store) AssetURLs(ctx context.Context, uid int64, ids []string, base string) ([]string, error) {
+	return s.AssetURLsForType(ctx, uid, ids, base, "")
+}
+func (s *Store) AssetURLsForType(ctx context.Context, uid int64, ids []string, base, kind string) ([]string, error) {
 	out := []string{}
 	for _, id := range ids {
 		var owner int64
-		e := s.DB.QueryRowContext(ctx, `SELECT user_id FROM video_studio_assets WHERE id=$1`, id).Scan(&owner)
+		var mime string
+		e := s.DB.QueryRowContext(ctx, `SELECT user_id,mime FROM video_studio_assets WHERE id=$1`, id).Scan(&owner, &mime)
 		if e != nil || owner != uid {
 			return nil, errors.New("参考素材不存在或不属于你")
+		}
+		if kind != "" && !strings.HasPrefix(mime, kind+"/") {
+			return nil, errors.New("参考素材类型不符，请将图片、视频、音频放入对应字段")
 		}
 		out = append(out, strings.TrimRight(base, "/")+"/api/v1/video-assets/"+id)
 	}

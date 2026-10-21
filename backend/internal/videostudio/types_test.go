@@ -128,3 +128,25 @@ func TestReferenceLimitsArePerModelAndMediaType(t *testing.T) {
 		t.Fatal("H3 audio limit ignored")
 	}
 }
+
+func TestProjectPreservesPerShotMedia(t *testing.T) {
+	d := Document{Shots: []Shot{{ID: "one", Duration: 5, Videos: []string{"vid"}, Audios: []string{"aud"}}}}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Document
+	if err = json.Unmarshal(b, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Shots[0].Videos) != 1 || len(restored.Shots[0].Audios) != 1 {
+		t.Fatal("shot media lost")
+	}
+	if err = validateDocument(restored); err != nil {
+		t.Fatal(err)
+	}
+	restored.Shots[0].Videos = make([]string, 4)
+	if validateDocument(restored) == nil {
+		t.Fatal("excess shot videos accepted")
+	}
+}
