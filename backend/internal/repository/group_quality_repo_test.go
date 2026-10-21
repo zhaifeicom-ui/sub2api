@@ -16,7 +16,7 @@ func qualityConfigMockRows(access string, enabled bool) *sqlmock.Rows {
 func TestQualityReservationRejectsRevokedCustomerAccess(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	r := &groupQualityRepository{db: db}
 	m.ExpectBegin()
 	m.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -44,7 +44,7 @@ func TestQualityReservationBusyAndCooldown(t *testing.T) {
 		m.ExpectRollback()
 		require.ErrorIs(t, r.Reserve(context.Background(), &service.GroupQualityRun{GroupID: 1, Model: "gpt-6-sol", APIMode: "responses"}, true), want)
 		require.NoError(t, m.ExpectationsWereMet())
-		db.Close()
+		_ = db.Close()
 	}
 }
 func TestQualityPermissionModelsAndCustomerModes(t *testing.T) {
@@ -59,7 +59,7 @@ func TestQualityPermissionModelsAndCustomerModes(t *testing.T) {
 func TestQualityAutomaticReservationRechecksDisabledSchedule(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	r := &groupQualityRepository{db: db}
 	m.ExpectBegin()
 	m.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -73,7 +73,7 @@ func TestQualityAutomaticReservationRechecksDisabledSchedule(t *testing.T) {
 func TestQualityReservationSuccess(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	r := &groupQualityRepository{db: db}
 	now := time.Now()
 	account, user := int64(19), int64(42)
@@ -94,7 +94,7 @@ func TestQualityReservationSuccess(t *testing.T) {
 func TestQualityFinishBoundsRetention(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	now := time.Now()
 	r := &groupQualityRepository{db: db}
 	m.ExpectBegin()
@@ -108,7 +108,7 @@ func TestQualityFinishBoundsRetention(t *testing.T) {
 func TestQualityExpiredHistoryDecodesWithoutSource(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	now := time.Now()
 	r := &groupQualityRepository{db: db}
 	cols := []string{"id", "group_id", "model", "account_id", "upstream_model", "prompt_version", "api_mode", "requested_by", "status", "started_at", "deadline_at", "finished_at", "duration_ms", "response_length", "input_tokens", "output_tokens", "source", "error_code", "error_message", "automatic"}

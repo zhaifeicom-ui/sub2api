@@ -339,7 +339,7 @@ func (s *ChannelQualityService) call(ctx context.Context, monitor *ChannelMonito
 		}
 		return "", 0, 0, "request_failed", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 		message := gjson.GetBytes(data, "error.message").String()
@@ -380,7 +380,7 @@ func (s *ChannelQualityService) call(ctx context.Context, monitor *ChannelMonito
 			}
 			for _, part := range item.Get("content").Array() {
 				if part.Get("type").String() == "output_text" {
-					text.WriteString(part.Get("text").String())
+					_, _ = text.WriteString(part.Get("text").String())
 				}
 			}
 		}

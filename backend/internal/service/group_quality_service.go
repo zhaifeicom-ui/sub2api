@@ -379,7 +379,7 @@ func (s *GroupQualityService) call(ctx context.Context, a Account, mode, model s
 	if err != nil {
 		return "", 0, 0, "request_failed", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", 0, 0, "upstream_http", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
@@ -405,7 +405,7 @@ func (s *GroupQualityService) call(ctx context.Context, a Account, mode, model s
 			}
 			for _, part := range item.Get("content").Array() {
 				if part.Get("type").String() == "output_text" {
-					text.WriteString(part.Get("text").String())
+					_, _ = text.WriteString(part.Get("text").String())
 				}
 			}
 		}

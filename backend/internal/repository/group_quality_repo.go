@@ -36,7 +36,7 @@ func (r *groupQualityRepository) ListConfigs(ctx context.Context) ([]service.Gro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.GroupQualityConfig{}
 	for rows.Next() {
 		c, err := scanQualityConfig(rows)
@@ -55,7 +55,7 @@ func (r *groupQualityRepository) SaveConfig(ctx context.Context, c service.Group
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(733002331)`); err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (r *groupQualityRepository) Reserve(ctx context.Context, run *service.Group
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Serializes reservations only (milliseconds), NOT the upstream inference.
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(733002331)`); err != nil {
 		return err
@@ -158,7 +158,7 @@ func (r *groupQualityRepository) Finish(ctx context.Context, run *service.GroupQ
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `UPDATE group_quality_test_runs SET status=$2,finished_at=$3,duration_ms=$4,response_length=$5,input_tokens=$6,output_tokens=$7,source=$8,error_code=$9,error_message=$10 WHERE id=$1 AND status='running'`, run.ID, run.Status, run.FinishedAt, run.DurationMS, run.ResponseLength, run.InputTokens, run.OutputTokens, run.Source, run.ErrorCode, run.ErrorMessage); err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func (r *groupQualityRepository) ListRuns(ctx context.Context, id int64, model s
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.GroupQualityRun{}
 	for rows.Next() {
 		run, err := scanQualityRun(rows)

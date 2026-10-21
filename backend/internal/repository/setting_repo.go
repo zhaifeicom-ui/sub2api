@@ -17,8 +17,7 @@ type settingRepository struct {
 }
 
 func ProvideSettingRepository(client *ent.Client, db *sql.DB) service.SettingRepository {
-	r := NewSettingRepository(client).(*settingRepository)
-	r.db = db
+	r := &settingRepository{client: client, db: db}
 	return r
 }
 func (r *settingRepository) RecordManagedPolicy(ctx context.Context, e service.ManagedPolicyEvent) error {
