@@ -11,7 +11,7 @@ import (
 )
 
 func testChannel() Channel {
-	return Channel{GroupID: 1, AccountID: 1, PublicBaseURL: "https://example.com", Enabled: true, MaxConcurrent: 1, Models: []Model{{ID: "MiniMax-H3", Mode: "second", Rates: map[string]float64{"768p": .22, "2k": .35}, CostCNY: map[string]float64{"768p": .22, "2k": .35}, MinSeconds: 4, MaxSeconds: 30, MaxImages: 9, MaxVideos: 1, MaxAudios: 1, Audio: true}, {ID: "MiniMax-H3 2K", Mode: "job", Rates: map[string]float64{"2k": 2.2}, CostCNY: map[string]float64{"2k": 2.2}, MinSeconds: 4, MaxSeconds: 15, MaxImages: 9, Audio: true}}}
+	return Channel{GroupID: 1, AccountID: 1, PublicBaseURL: "https://example.com", Enabled: true, MaxConcurrent: 1, Models: []Model{{ID: "MiniMax-H3", Mode: "second", Rates: map[string]float64{"768p": .22, "2k": .35}, CostCNY: map[string]float64{"768p": .22, "2k": .35}, MinSeconds: 4, MaxSeconds: 30, MaxImages: 9, MaxVideos: 1, MaxAudios: 1, Audio: true}, {ID: "MiniMax-H3 2K", Mode: "job", Rates: map[string]float64{"2k": 2.2}, CostCNY: map[string]float64{"2k": 2.2}, MinSeconds: 1, MaxSeconds: 15, MaxImages: 9, MaxVideos: 3, MaxAudios: 3, Audio: true}}}
 }
 func testRequest() Request {
 	return Request{KeyID: 1, Model: "MiniMax-H3", Input: Input{Prompt: "一只猫在花园散步", Duration: 4, Resolution: "768p", AspectRatio: "16:9"}}
@@ -98,5 +98,33 @@ func TestProjectValidation(t *testing.T) {
 	d.Shots = d.Shots[:1]
 	if e := validateDocument(d); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestReferenceLimitsArePerModelAndMediaType(t *testing.T) {
+	c := testChannel()
+	r := testRequest()
+	r.Model = "MiniMax-H3 2K"
+	r.Input.Resolution = "2k"
+	r.Input.Duration = 1
+	r.Input.Images = make([]string, 9)
+	r.Input.Videos = make([]string, 3)
+	r.Input.Audios = make([]string, 3)
+	if _, err := Quote(c, r); err != nil {
+		t.Fatalf("published per-type maxima rejected: %v", err)
+	}
+	r.Input.Videos = make([]string, 4)
+	if _, err := Quote(c, r); err == nil {
+		t.Fatal("excess videos accepted")
+	}
+	r = testRequest()
+	r.Input.Videos = make([]string, 2)
+	if _, err := Quote(c, r); err == nil {
+		t.Fatal("H3 video limit ignored")
+	}
+	r.Input.Videos = nil
+	r.Input.Audios = make([]string, 2)
+	if _, err := Quote(c, r); err == nil {
+		t.Fatal("H3 audio limit ignored")
 	}
 }

@@ -169,7 +169,7 @@ func Quote(c Channel, r Request) (Price, error) {
 			if n := len([]rune(strings.TrimSpace(r.Input.Prompt))); n == 0 || n > 7000 {
 				return Price{}, errors.New("提示词须为 1–7000 字")
 			}
-			if len(r.Input.Images) > m.MaxImages || len(r.Input.Videos) > m.MaxVideos || len(r.Input.Audios) > m.MaxAudios || len(r.Input.Images)+len(r.Input.Videos)+len(r.Input.Audios) > 12 {
+			if len(r.Input.Images) > m.MaxImages || len(r.Input.Videos) > m.MaxVideos || len(r.Input.Audios) > m.MaxAudios {
 				return Price{}, errors.New("参考素材数量超过模型上限")
 			}
 			if r.Input.GenerateAudio && !m.Audio {
