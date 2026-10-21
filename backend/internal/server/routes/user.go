@@ -19,6 +19,7 @@ func RegisterUserRoutes(
 ) {
 	if h.VideoStudio != nil {
 		v1.GET("/video-assets/:id", h.VideoStudio.Asset)
+		v1.HEAD("/video-assets/:id", h.VideoStudio.Asset)
 	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))

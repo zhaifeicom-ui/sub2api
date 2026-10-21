@@ -88,7 +88,7 @@ func (w *Worker) claim(ctx context.Context) (string, error) {
 	}
 	err = tx.QueryRowContext(ctx, `WITH candidate AS (
  SELECT t.id FROM video_studio_tasks t JOIN video_studio_channels ch ON ch.group_id=t.group_id
- WHERE NOT t.settled AND t.poll_after<=now() AND (t.status IN ('queued','in_progress') OR (t.status='pending' AND ch.enabled AND (SELECT count(*) FROM video_studio_tasks a WHERE a.account_id=t.account_id AND a.status IN ('submitting','queued','in_progress'))<COALESCE((SELECT min((vc.config->>'max_concurrent')::int) FROM video_studio_channels vc WHERE vc.account_id=t.account_id AND vc.enabled),1)))
+ WHERE NOT t.settled AND t.poll_after<=now() AND (t.status IN ('queued','in_progress') OR (t.status='pending' AND ch.enabled AND (SELECT count(*) FROM video_studio_tasks a WHERE a.account_id=t.account_id AND NOT a.settled AND a.status IN ('submitting','queued','in_progress','needs_review'))<COALESCE((SELECT min((vc.config->>'max_concurrent')::int) FROM video_studio_channels vc WHERE vc.account_id=t.account_id AND vc.enabled),1)))
  ORDER BY CASE WHEN t.status='pending' THEN 1 ELSE 0 END,t.poll_after FOR UPDATE OF t SKIP LOCKED LIMIT 1)
  UPDATE video_studio_tasks SET status=CASE WHEN status='pending' THEN 'submitting' ELSE status END,poll_after=now()+interval '3 minutes',updated_at=now() WHERE id=(SELECT id FROM candidate) RETURNING id`).Scan(&id)
 	if err != nil {

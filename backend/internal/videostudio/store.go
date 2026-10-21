@@ -94,7 +94,7 @@ func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 }
 func (s *Store) KeyGroup(ctx context.Context, uid, kid int64) (int64, error) {
 	var gid int64
-	err := s.DB.QueryRowContext(ctx, `SELECT k.group_id FROM api_keys k JOIN users u ON u.id=k.user_id JOIN groups g ON g.id=k.group_id WHERE k.id=$1 AND k.user_id=$2 AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND u.deleted_at IS NULL AND u.status='active' AND g.deleted_at IS NULL AND g.status='active' AND g.platform='video' AND g.subscription_type='standard'=true`, kid, uid).Scan(&gid)
+	err := s.DB.QueryRowContext(ctx, `SELECT k.group_id FROM api_keys k JOIN users u ON u.id=k.user_id JOIN groups g ON g.id=k.group_id WHERE k.id=$1 AND k.user_id=$2 AND k.deleted_at IS NULL AND k.status='active' AND (k.expires_at IS NULL OR k.expires_at>now()) AND u.deleted_at IS NULL AND u.status='active' AND g.deleted_at IS NULL AND g.status='active' AND g.platform='video' AND g.subscription_type='standard'`, kid, uid).Scan(&gid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, errors.New("请选择属于你的有效视频余额分组密钥")
 	}
@@ -134,7 +134,7 @@ func (s *Store) Task(ctx context.Context, uid int64, id string) (Task, error) {
 	return scanTask(s.DB.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM video_studio_tasks WHERE id=$1 AND ($2::bigint=0 OR user_id=$2)`, id, uid))
 }
 func (s *Store) Tasks(ctx context.Context, uid int64, before string, project string) ([]Task, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+taskColumns+` FROM video_studio_tasks WHERE user_id=$1 AND ($3='' OR project_id=$3) AND ($2='' OR created_at<(SELECT created_at FROM video_studio_tasks WHERE id=$2 AND user_id=$1)) ORDER BY created_at DESC LIMIT 50`, uid, before, project)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+taskColumns+` FROM video_studio_tasks WHERE user_id=$1 AND ($3='' OR project_id=$3) AND ($2='' OR (created_at,id)<(SELECT created_at,id FROM video_studio_tasks WHERE id=$2 AND user_id=$1)) ORDER BY created_at DESC,id DESC LIMIT 50`, uid, before, project)
 	if err != nil {
 		return nil, err
 	}
@@ -279,12 +279,15 @@ func (s *Store) invalidate(ctx context.Context, uid, kid int64) {
 // Finish locks the task before applying funds. It is safe for polling, recovery,
 // and admin reconciliation to race: terminal settlement occurs exactly once.
 func (s *Store) CancelPending(ctx context.Context, uid int64, id string) error {
-	return s.finish(ctx, id, "failed", "用户取消了尚未提交的任务", nil, true, uid)
+	return s.finish(ctx, id, "failed", "用户取消了尚未提交的任务", nil, "pending", uid)
 }
 func (s *Store) Finish(ctx context.Context, id, status, message string, outputs []string) error {
-	return s.finish(ctx, id, status, message, outputs, false, 0)
+	return s.finish(ctx, id, status, message, outputs, "", 0)
 }
-func (s *Store) finish(ctx context.Context, id, status, message string, outputs []string, pendingOnly bool, uid int64) error {
+func (s *Store) RefundReview(ctx context.Context, id, message string) error {
+	return s.finish(ctx, id, "failed", message, nil, "needs_review", 0)
+}
+func (s *Store) finish(ctx context.Context, id, status, message string, outputs []string, requiredStatus string, uid int64) error {
 	if status != "completed" && status != "failed" {
 		return errors.New("无效结算状态")
 	}
@@ -300,8 +303,11 @@ func (s *Store) finish(ctx context.Context, id, status, message string, outputs 
 	if err != nil {
 		return err
 	}
-	if pendingOnly && (t.UserID != uid || t.Status != "pending") {
-		return errors.New("仅可取消自己尚未提交上游的任务")
+	if uid != 0 && t.UserID != uid {
+		return ErrNotFound
+	}
+	if requiredStatus != "" && t.Status != requiredStatus {
+		return ErrConflict
 	}
 	if t.Settled {
 		return nil
@@ -502,8 +508,18 @@ func (s *Store) Attach(ctx context.Context, id, upstreamID string) error {
 	if upstreamID == "" || len(upstreamID) > 200 || strings.ContainsAny(upstreamID, "/\\?#") {
 		return errors.New("无效上游任务 ID")
 	}
-	_, e := s.DB.ExecContext(ctx, `UPDATE video_studio_tasks SET upstream_id=$2,status='queued',error_message='',poll_after=now(),poll_deadline=now()+interval '24 hours',updated_at=now() WHERE id=$1 AND NOT settled AND status='needs_review'`, id, upstreamID)
-	return e
+	result, e := s.DB.ExecContext(ctx, `UPDATE video_studio_tasks SET upstream_id=$2,status='queued',error_message='',poll_after=now(),poll_deadline=now()+interval '24 hours',updated_at=now() WHERE id=$1 AND NOT settled AND status='needs_review'`, id, upstreamID)
+	if e != nil {
+		return e
+	}
+	affected, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if affected != 1 {
+		return ErrConflict
+	}
+	return nil
 }
 func (s *Store) ReviewTasks(ctx context.Context) ([]Task, error) {
 	rows, e := s.DB.QueryContext(ctx, `SELECT `+taskColumns+` FROM video_studio_tasks WHERE status='needs_review' ORDER BY created_at LIMIT 100`)

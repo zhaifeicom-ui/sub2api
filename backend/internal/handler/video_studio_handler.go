@@ -270,6 +270,9 @@ func (h *VideoStudioHandler) Upload(c *gin.Context) {
 		return
 	}
 	mime := http.DetectContentType(b)
+	if mime == "application/ogg" {
+		mime = "audio/ogg"
+	}
 	switch mime {
 	case "image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm", "audio/mpeg", "audio/wave", "audio/x-wav", "audio/ogg", "application/ogg":
 	default:
@@ -290,7 +293,8 @@ func (h *VideoStudioHandler) Asset(c *gin.Context) {
 	}
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Cache-Control", "private, max-age=300")
-	c.Data(200, mime, b)
+	c.Header("Content-Type", mime)
+	http.ServeContent(c.Writer, c.Request, c.Param("id"), time.Time{}, bytes.NewReader(b))
 }
 func (h *VideoStudioHandler) DeleteAsset(c *gin.Context) {
 	e := h.store.DeleteAsset(c.Request.Context(), videoUser(c), c.Param("id"))
@@ -366,7 +370,7 @@ func (h *VideoStudioHandler) Reconcile(c *gin.Context) {
 			videoReply(c, nil, errors.New("请注明已向上游核对失败的依据（至少 5 字）"))
 			return
 		}
-		e = h.store.Finish(c.Request.Context(), t.ID, "failed", "管理员核对退款："+req.Reason, nil)
+		e = h.store.RefundReview(c.Request.Context(), t.ID, "管理员核对退款："+req.Reason)
 	} else {
 		e = h.store.Attach(c.Request.Context(), t.ID, req.UpstreamID)
 	}

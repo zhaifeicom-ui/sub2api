@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -346,5 +347,82 @@ func TestAccountCapacityUsesSmallestEnabledChannel(t *testing.T) {
 	}
 	if _, e := w.claim(ctx); !errors.Is(e, sql.ErrNoRows) {
 		t.Fatalf("shared account exceeded min capacity: %v", e)
+	}
+}
+
+func TestHistoryPaginationIncludesSameTimestampTasks(t *testing.T) {
+	s := integrationStore(t)
+	ctx := context.Background()
+	for i := 0; i < 63; i++ {
+		task := reserveTest(t, s, fmt.Sprintf("history-page-%03d", i))
+		if err := s.Finish(ctx, task.ID, "failed", "test", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.DB.Exec(`UPDATE video_studio_tasks SET created_at='2026-01-01T00:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Tasks(ctx, 1, "", "")
+	if err != nil || len(first) != 50 {
+		t.Fatalf("first page: %d %v", len(first), err)
+	}
+	next, err := s.Tasks(ctx, 1, first[49].ID, "")
+	if err != nil || len(next) != 13 {
+		t.Fatalf("next page: %d %v", len(next), err)
+	}
+	seen := map[string]bool{}
+	for _, task := range append(first, next...) {
+		if seen[task.ID] {
+			t.Fatal("duplicate page record")
+		}
+		seen[task.ID] = true
+	}
+}
+func TestUncertainTasksKeepAccountCapacityReserved(t *testing.T) {
+	s := integrationStore(t)
+	ctx := context.Background()
+	first := reserveTest(t, s, "uncertain-capacity-1")
+	reserveTest(t, s, "uncertain-capacity-2")
+	if err := s.Review(ctx, first.ID, "acceptance uncertain"); err != nil {
+		t.Fatal(err)
+	}
+	w := NewWorker(s)
+	if _, err := w.claim(ctx); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("uncertain task did not retain capacity: %v", err)
+	}
+	if err := s.Finish(ctx, first.ID, "failed", "confirmed rejected", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.claim(ctx); err != nil {
+		t.Fatalf("capacity not released after reconciliation: %v", err)
+	}
+}
+
+func TestReviewRefundCannotRaceWithResumedTask(t *testing.T) {
+	s := integrationStore(t)
+	ctx := context.Background()
+	task := reserveTest(t, s, "review-refund-race")
+	if err := s.Review(ctx, task.ID, "uncertain"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Attach(ctx, task.ID, "upstream_verified"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RefundReview(ctx, task.ID, "stale admin refund"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale refund accepted: %v", err)
+	}
+	assertMoney(t, s, 99.12, .88, .88, .88)
+	if err := s.Attach(ctx, task.ID, "other_upstream"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale attach accepted: %v", err)
+	}
+	if err := s.Review(ctx, task.ID, "verified rejected"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RefundReview(ctx, task.ID, "confirmed failed"); err != nil {
+		t.Fatal(err)
+	}
+	assertMoney(t, s, 100, 0, 0, 0)
+	if err := s.Attach(ctx, task.ID, "another_upstream"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("settled task resumed: %v", err)
 	}
 }
