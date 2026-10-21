@@ -43,7 +43,7 @@ func (s *Store) SaveChannel(ctx context.Context, c Channel) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var valid bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts a CROSS JOIN groups g WHERE a.id=$1 AND g.id=$2 AND a.deleted_at IS NULL AND g.deleted_at IS NULL AND a.platform='video' AND a.type='apikey' AND g.platform='video' AND g.subscription_type='standard')`, c.AccountID, c.GroupID).Scan(&valid)
 	if err != nil {
@@ -72,13 +72,13 @@ func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 	for rows.Next() {
 		var id int64
 		if err = rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (s *Store) Tasks(ctx context.Context, uid int64, before string, project str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Task{}
 	for rows.Next() {
 		t, e := scanTask(rows)
@@ -167,7 +167,7 @@ func (s *Store) ReserveMany(ctx context.Context, uid int64, items []Reservation)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	out := make([]Task, 0, len(items))
 	for _, item := range items {
 		t, e := s.reserveTx(ctx, tx, uid, item.Channel, item.Request, item.Price, item.Idempotency)
@@ -295,7 +295,7 @@ func (s *Store) finish(ctx context.Context, id, status, message string, outputs 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	t, err := scanTask(tx.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM video_studio_tasks WHERE id=$1 FOR UPDATE`, id))
 	if err != nil {
 		return err
@@ -339,7 +339,7 @@ func (s *Store) Projects(ctx context.Context, uid int64) ([]Project, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Project{}
 	for rows.Next() {
 		var p Project
@@ -391,7 +391,7 @@ func (s *Store) Assets(ctx context.Context, uid int64) ([]Asset, error) {
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Asset{}
 	for rows.Next() {
 		var a Asset
@@ -408,7 +408,7 @@ func (s *Store) PutAsset(ctx context.Context, uid int64, name, mime string, b []
 	if e != nil {
 		return a, e
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var u int64
 	if e = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, uid).Scan(&u); e != nil {
 		return a, e
@@ -501,7 +501,7 @@ func (s *Store) ReviewTasks(ctx context.Context) ([]Task, error) {
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Task{}
 	for rows.Next() {
 		t, e := scanTask(rows)

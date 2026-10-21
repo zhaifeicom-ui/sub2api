@@ -20,7 +20,7 @@ func (h *VideoStudioHandler) ChannelChoices(c *gin.Context) {
 		if e != nil {
 			return nil, e
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		out := []choice{}
 		for rows.Next() {
 			var v choice

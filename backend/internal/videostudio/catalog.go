@@ -32,7 +32,7 @@ func discover(ctx context.Context, raw, key string, client *http.Client) ([]Mode
 		if e != nil {
 			return errors.New("读取上游模型失败，请稍后重试")
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != 200 {
 			return fmt.Errorf("上游模型目录返回 %d", resp.StatusCode)
 		}

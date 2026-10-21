@@ -39,7 +39,7 @@ func integrationStore(t *testing.T) *Store {
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(func() { db.Close(); _, _ = root.Exec(`DROP SCHEMA ` + schema + ` CASCADE`); root.Close() })
+	t.Cleanup(func() { _ = db.Close(); _, _ = root.Exec(`DROP SCHEMA ` + schema + ` CASCADE`); _ = root.Close() })
 	_, e = db.Exec(`CREATE TABLE users(id bigint PRIMARY KEY,balance numeric(20,8),frozen_balance numeric(20,8) DEFAULT 0,status text DEFAULT 'active',deleted_at timestamptz,updated_at timestamptz DEFAULT now());
  CREATE TABLE groups(id bigint PRIMARY KEY,platform text DEFAULT 'video',status text DEFAULT 'active',subscription_type text DEFAULT 'standard',allow_image_generation bool DEFAULT true,deleted_at timestamptz);
  CREATE TABLE accounts(id bigint PRIMARY KEY,credentials jsonb,type text DEFAULT 'apikey',platform text DEFAULT 'video',status text DEFAULT 'active',schedulable bool DEFAULT true,expires_at timestamptz,deleted_at timestamptz);

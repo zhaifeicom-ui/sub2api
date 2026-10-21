@@ -81,7 +81,7 @@ func (w *Worker) claim(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Short global claim lock makes per-account concurrency exact across replicas.
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(75188211)`); err != nil {
 		return "", err
@@ -137,7 +137,7 @@ func (w *Worker) call(ctx context.Context, base, key, method, path string, paylo
 	if err != nil {
 		return out, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
 	if err != nil {
 		return out, resp.StatusCode, err

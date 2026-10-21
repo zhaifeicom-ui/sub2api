@@ -94,14 +94,14 @@ func (h *VideoStudioHandler) Options(c *gin.Context) {
 	for rows.Next() {
 		var o option
 		if err = rows.Scan(&o.KeyID, &o.KeyName, &o.GroupID, &o.GroupName); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			videoReply(c, nil, err)
 			return
 		}
 		opts = append(opts, o)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		videoReply(c, nil, err)
 		return
@@ -256,14 +256,14 @@ func (h *VideoStudioHandler) Upload(c *gin.Context) {
 		return
 	}
 	if c.Request.MultipartForm != nil {
-		defer c.Request.MultipartForm.RemoveAll()
+		defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
 	}
 	f, header, e := c.Request.FormFile("file")
 	if e != nil {
 		videoReply(c, nil, e)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	b, e := io.ReadAll(io.LimitReader(f, 30*1024*1024+1))
 	if e != nil || len(b) > 30*1024*1024 {
 		videoReply(c, nil, errors.New("素材不能超过 30MB"))
@@ -414,7 +414,7 @@ func (h *VideoStudioHandler) Plan(c *gin.Context) {
 		videoReply(c, nil, errors.New("剧本拆分请求未完成，请先检查用量记录再重试"))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, e := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if e != nil || resp.StatusCode != 200 {
 		videoReply(c, nil, errors.New("聊天模型调用失败，请检查聊天 Key、模型权限和余额"))
