@@ -108,7 +108,7 @@ func TestLaneTaskMaterialContract(t *testing.T) {
 			if p.Model != model {
 				t.Fatal("model changed")
 			}
-			for field, kind := range map[string]string{"materials": "image", "video_references": "video", "audio_references": "audio"} {
+			for field, kind := range map[string]string{"audio_references": "audio"} {
 				var refs []laneMaterialReference
 				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
 					t.Fatalf("%s must use MaterialReference objects: %v", field, err)
@@ -117,9 +117,18 @@ func TestLaneTaskMaterialContract(t *testing.T) {
 					t.Fatalf("wrong %s: %+v", field, refs)
 				}
 			}
-			for _, field := range []string{"images", "videos", "audios"} {
+			for field, kind := range map[string]string{"images": "image", "videos": "video"} {
+				var refs []string
+				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
+					t.Fatalf("%s must use URL strings: %v", field, err)
+				}
+				if len(refs) != 1 || refs[0] != "https://station.example/"+kind {
+					t.Fatalf("wrong %s: %+v", field, refs)
+				}
+			}
+			for _, field := range []string{"materials", "video_references", "audios"} {
 				if _, ok := p.Input[field]; ok {
-					t.Fatalf("legacy field %s must not be sent", field)
+					t.Fatalf("undocumented field %s must not be sent", field)
 				}
 			}
 		})

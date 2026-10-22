@@ -289,15 +289,14 @@ func laneTaskPayload(model string, input Input, images, videos, audios []string)
 		"resolution": strings.ToLower(input.Resolution), "aspect_ratio": input.AspectRatio,
 		"generate_audio": input.GenerateAudio,
 	}
-	// LaneAI's task endpoint maps these fields to h3comfy reference structs.
-	// The public sample's images/videos/audios URL arrays are currently rejected
-	// as strings; the live endpoint accepts MaterialReference objects under its
-	// internal field names instead.
+	// The public /v1/task/submit contract accepts image and video URLs in the
+	// documented images/videos arrays. Audio references use the backend's
+	// MaterialReference type and must be sent under audio_references.
 	if len(images) > 0 {
-		upstreamInput["materials"] = laneReferences(images)
+		upstreamInput["images"] = append([]string{}, images...)
 	}
 	if len(videos) > 0 {
-		upstreamInput["video_references"] = laneReferences(videos)
+		upstreamInput["videos"] = append([]string{}, videos...)
 	}
 	if len(audios) > 0 {
 		upstreamInput["audio_references"] = laneReferences(audios)
