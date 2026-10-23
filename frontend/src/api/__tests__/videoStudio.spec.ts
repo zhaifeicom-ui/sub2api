@@ -37,3 +37,11 @@ it('applies markup to conditional tariffs and all material fees', () => {
  expect(priced.rules?.[0]).toMatchObject({ rate: 1.2, base_fee: .6, image_fee: .12, video_fee: .24, audio_fee: .36 })
  expect(() => markUpVideoModel({ ...model, cost_cny: { '768p': NaN, '2k': 1 } }, 7)).toThrow()
 })
+
+it('previews the deployed H3 duration tariffs without hiding rounded totals', () => {
+ const h3: VideoModel = { ...model, id: 'MiniMax-H3', rates: { '768p': .084 }, min_seconds: 1, max_seconds: 15, rules: [1, 4, 5, 10, 15].map(seconds => ({ resolution: '768p', min_seconds: seconds, max_seconds: seconds, audio: 'any', reference: 'any', mode: 'job', rate: Math.round(seconds * .084 * 100) / 100 })) }
+ for (const [seconds, expected] of [[1, .08], [4, .34], [5, .42], [10, .84], [15, 1.26]]) {
+  const input = { prompt: '', duration: seconds!, resolution: '768p', aspect_ratio: '16:9', generate_audio: false, images: [], videos: [], audios: [] }
+  expect(estimateVideo(h3, '768p', seconds!, input)).toBe(expected)
+ }
+})
