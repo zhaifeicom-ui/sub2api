@@ -368,6 +368,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 
+	if account.Platform == PlatformVideo {
+		return s.sendErrorAndEnd(c, "视频账号请在视频渠道读取模型目录，真实生成验收请使用视频工作台；此测试不会调用聊天或付费生成接口")
+	}
+
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
 	// to an upstream provider.

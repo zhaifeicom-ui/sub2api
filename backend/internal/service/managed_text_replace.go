@@ -40,7 +40,7 @@ func (r *ManagedTextReplacer) Feed(text string, final bool) string {
 					r.limited = true
 					return original
 				}
-				out.WriteString(rule.Content)
+				_, _ = out.WriteString(rule.Content)
 				r.pending = r.pending[len(rule.Match):]
 				matched = true
 				break
@@ -62,7 +62,7 @@ func (r *ManagedTextReplacer) Feed(text string, final bool) string {
 			r.limited = true
 			return original
 		}
-		out.WriteString(r.pending[:n])
+		_, _ = out.WriteString(r.pending[:n])
 		r.pending = r.pending[n:]
 	}
 	return out.String()

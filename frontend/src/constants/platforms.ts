@@ -11,6 +11,7 @@ export interface PlatformOption<T extends string = string> {
  * do not silently disappear from list filters.
  */
 export const CONCRETE_PLATFORM_OPTIONS = [
+  { value: 'video', label: '视频 · Video' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'gemini', label: 'Gemini' },

@@ -71,3 +71,13 @@ jobs:
           cache-to: type=gha,mode=max,scope=prompt-injection
           provenance: false
           sbom: false
+
+      - name: Verify built runtime and backup clients without network access
+        env:
+          SMOKE_IMAGE: ${{ steps.image.outputs.image }}:${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker pull "$SMOKE_IMAGE"
+          docker run --rm --network none "$SMOKE_IMAGE" --version
+          docker run --rm --network none --entrypoint /usr/local/bin/pg_dump "$SMOKE_IMAGE" --version
+          docker run --rm --network none --entrypoint /usr/local/bin/psql "$SMOKE_IMAGE" --version

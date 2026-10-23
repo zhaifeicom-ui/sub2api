@@ -17,8 +17,7 @@ type settingRepository struct {
 }
 
 func ProvideSettingRepository(client *ent.Client, db *sql.DB) service.SettingRepository {
-	r := NewSettingRepository(client).(*settingRepository)
-	r.db = db
+	r := &settingRepository{client: client, db: db}
 	return r
 }
 func (r *settingRepository) RecordManagedPolicy(ctx context.Context, e service.ManagedPolicyEvent) error {
@@ -42,7 +41,7 @@ func (r *settingRepository) ListManagedPolicy(ctx context.Context) ([]service.Ma
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var e service.ManagedPolicyEvent
 		var ids []byte

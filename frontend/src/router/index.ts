@@ -216,6 +216,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/video-studio',
+    name: 'VideoStudio',
+    component: () => import('@/views/user/VideoStudioView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: '视频工作台' }
+  },
+  {
     path: '/batch-image',
     name: 'BatchImageGuide',
     alias: '/docs/batch-image',

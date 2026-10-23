@@ -11,7 +11,7 @@ import (
 func TestQualityScheduleBusyDoesNotClaimOrCallModels(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	r := &groupQualityRepository{db: db}
 	m.ExpectBegin()
 	m.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -25,7 +25,7 @@ func TestQualityScheduleBusyDoesNotClaimOrCallModels(t *testing.T) {
 func TestQualityScheduleClaimAdvancesFromNowNotOldDueDate(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	r := &groupQualityRepository{db: db}
 	m.ExpectBegin()
 	m.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
@@ -40,7 +40,7 @@ func TestQualityScheduleClaimAdvancesFromNowNotOldDueDate(t *testing.T) {
 func TestQualityScheduleLeaderLockSkipsOtherReplicas(t *testing.T) {
 	db, m, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	r := &groupQualityRepository{db: db}
 	m.ExpectBegin()
 	m.ExpectQuery("SELECT pg_try_advisory_xact_lock").WillReturnRows(sqlmock.NewRows([]string{"acquired"}).AddRow(false))

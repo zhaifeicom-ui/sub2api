@@ -78,7 +78,7 @@ func normalizePromptInjectionConfig(config PromptInjectionConfig) (PromptInjecti
 			return config, fmt.Errorf("规则操作无效")
 		}
 		if rule.Action == "replace_input" || rule.Action == "replace_output" {
-			if (rule.Match == "" && !(rule.Action == "replace_input" && rule.WholeInput)) || len(rule.Match) > 1024 || len(rule.Content) > 4096 {
+			if (rule.Match == "" && (rule.Action != "replace_input" || !rule.WholeInput)) || len(rule.Match) > 1024 || len(rule.Content) > 4096 {
 				return config, fmt.Errorf("替换匹配词不能为空且不可超过1024字节，替换文本不可超过4096字节")
 			}
 		}

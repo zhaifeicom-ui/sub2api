@@ -382,6 +382,8 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 
 func defaultModelsListCandidateIDs(platform string) []string {
 	switch platform {
+	case PlatformVideo:
+		return nil // Video models come from the channel catalog, never chat defaults.
 	case PlatformOpenAI:
 		return openai.DefaultModelIDs()
 	case PlatformGemini:
@@ -517,6 +519,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
 	}
 
+	if platform == PlatformVideo && input.SubscriptionType != "" && input.SubscriptionType != SubscriptionTypeStandard {
+		return nil, infraerrors.BadRequest("VIDEO_BALANCE_ONLY", "视频分组按余额计费，请勿选择聊天订阅")
+	}
 	subscriptionType := input.SubscriptionType
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
@@ -864,6 +869,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if input.Platform != "" && input.Platform != group.Platform && (input.Platform == PlatformVideo || group.Platform == PlatformVideo) {
+		return nil, infraerrors.BadRequest("VIDEO_GROUP_TYPE_IMMUTABLE", "请新建视频分组，不要在聊天和视频之间转换已有分组")
+	}
+	if group.Platform == PlatformVideo && input.SubscriptionType != "" && input.SubscriptionType != SubscriptionTypeStandard {
+		return nil, infraerrors.BadRequest("VIDEO_BALANCE_ONLY", "视频分组按余额计费，请勿选择聊天订阅")
 	}
 	if err := s.validateSimpleModeGroupAccess(group); err != nil {
 		return nil, err
