@@ -57,21 +57,21 @@ func ValidateMovoModel(m Model) error {
 	}
 	for r := range m.Rates {
 		if m.CostCNY[r] <= 0 {
-			return errors.New("Movo 实际分组成本尚未确认，不能以零成本开放")
+			return errors.New("视频上游 Movo 实际分组成本尚未确认，不能以零成本开放")
 		}
 	}
 	switch m.ID {
 	case "MiniMax-H3":
 		if m.Mode != "second" || m.MinSeconds < 1 || m.MaxSeconds > 15 || m.MaxImages > 9 || m.MaxVideos > 3 || m.MaxAudios > 3 || m.MaxReferences != 12 || m.MaxPromptChars > 7000 || len(m.Rates) != 1 || m.Rates["768p"] <= 0 {
-			return errors.New("Movo H3 仅支持 1–15 秒、768P、按秒，最多 9 图/3 视频/3 音频、总共 12 个素材")
+			return errors.New("视频上游 Movo H3 仅支持 1–15 秒、768P、按秒，最多 9 图/3 视频/3 音频、总共 12 个素材")
 		}
 	case "seedance2.5-yx-stable":
 		if m.Mode != "job" || m.MinSeconds < 4 || m.MaxSeconds > 30 || m.MaxImages > 30 || m.MaxVideos > 10 || m.MaxAudios > 10 || m.MaxPromptChars > 16000 {
-			return errors.New("Movo SD 2.5 仅支持 4–30 秒按条计费、30 图/10 视频/10 音频")
+			return errors.New("视频上游 Movo SD 2.5 仅支持 4–30 秒按条计费、30 图/10 视频/10 音频")
 		}
 		for r := range m.Rates {
 			if r != "480p" && r != "720p" && r != "1080p" {
-				return errors.New("SD 2.5 仅支持 480p、720p、1080p")
+				return errors.New("视频模型 SD 2.5 仅支持 480p、720p、1080p")
 			}
 		}
 	default:
@@ -152,7 +152,7 @@ func (w *Worker) movoOutput(ctx context.Context, base, key, id string, out upstr
 	if err != nil {
 		return nil, err
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	if r.StatusCode >= 300 && r.StatusCode < 400 {
 		u, err := r.Location()
 		if err != nil {

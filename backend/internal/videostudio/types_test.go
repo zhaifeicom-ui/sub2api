@@ -80,14 +80,14 @@ func TestMovoPayloads(t *testing.T) {
 				if p["seconds"] != "4" || p["size"] != "1344x768" {
 					t.Fatal(p)
 				}
-				content := p["metadata"].(map[string]any)["content"].([]map[string]any)
+				content := payloadValue[[]map[string]any](t, payloadValue[map[string]any](t, p["metadata"])["content"])
 				for i, kind := range []string{"image", "video", "audio"} {
-					if content[i]["role"] != "reference_"+kind || content[i][kind+"_url"].(map[string]string)["url"] != "https://station/"+kind {
+					if content[i]["role"] != "reference_"+kind || payloadValue[map[string]string](t, content[i][kind+"_url"])["url"] != "https://station/"+kind {
 						t.Fatal(content)
 					}
 				}
 			} else {
-				if p["seconds"] != 4 || len(p["reference_images"].([]string)) != 1 {
+				if p["seconds"] != 4 || len(payloadValue[[]string](t, p["reference_images"])) != 1 {
 					t.Fatal(p)
 				}
 				if model == "seedance2.5-yx-stable" && p["facs"] != true {
@@ -338,10 +338,10 @@ func TestMovoPayloadReferenceCounts(t *testing.T) {
 			}
 			p := movoPayload(model, testRequest().Input, refs(ni), refs(nv), refs(na))
 			if model == "MiniMax-H3" {
-				items := p["metadata"].(map[string]any)["content"].([]map[string]any)
+				items := payloadValue[[]map[string]any](t, payloadValue[map[string]any](t, p["metadata"])["content"])
 				counts := map[string]int{}
 				for _, item := range items {
-					counts[item["type"].(string)]++
+					counts[payloadValue[string](t, item["type"])]++
 				}
 				if counts["image_url"] != ni || counts["video_url"] != nv || counts["audio_url"] != na {
 					t.Fatal(counts)
@@ -357,7 +357,7 @@ func TestMovoPayloadReferenceCounts(t *testing.T) {
 						}
 						continue
 					}
-					urls := p[field.name].([]string)
+					urls := payloadValue[[]string](t, p[field.name])
 					if len(urls) != field.count || urls[len(urls)-1] != fmt.Sprintf("https://station.example/asset-%d", field.count-1) {
 						t.Fatal(field.name, urls)
 					}
@@ -365,4 +365,13 @@ func TestMovoPayloadReferenceCounts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func payloadValue[T any](t *testing.T, v any) T {
+	t.Helper()
+	value, ok := v.(T)
+	if !ok {
+		t.Fatalf("unexpected payload type %T", v)
+	}
+	return value
 }

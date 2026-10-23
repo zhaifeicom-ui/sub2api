@@ -181,10 +181,11 @@ func TestWorkerRecoveryAndContract(t *testing.T) {
 		if r.Method == "POST" {
 			submits.Add(1)
 			var p struct {
-				Model string `json:"model"`
-				Input Input  `json:"input"`
+				Model   string `json:"model"`
+				Prompt  string `json:"prompt"`
+				Seconds string `json:"seconds"`
 			}
-			if e := json.NewDecoder(r.Body).Decode(&p); e != nil || p.Input.Prompt == "" {
+			if e := json.NewDecoder(r.Body).Decode(&p); e != nil || p.Prompt == "" || p.Seconds != "4" || r.URL.Path != "/v1/videos" {
 				t.Errorf("invalid payload %v", e)
 			}
 		} else {
