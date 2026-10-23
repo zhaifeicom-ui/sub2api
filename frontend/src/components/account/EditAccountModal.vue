@@ -35,7 +35,7 @@
             type="text"
             class="input"
             :placeholder="
-              account.platform === 'video' ? 'https://laneai.dev/v1' : account.platform === 'openai'
+              account.platform === 'video' ? 'https://movoapi.top' : account.platform === 'openai'
                 ? 'https://api.openai.com'
                 : account.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
@@ -3325,7 +3325,7 @@ onMounted(() => {
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
-  if (props.account?.platform === 'video') return 'LaneAI 视频账号：使用 https://laneai.dev/v1；模型和售价在视频渠道中配置。'
+  if (props.account?.platform === 'video') return '支持 https://movoapi.top；切换上游请新建账号，旧任务保留历史账单。'
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
@@ -3989,7 +3989,7 @@ const tempUnschedPresets = computed(() => [
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
-  if (props.account?.platform === 'video') return 'https://laneai.dev/v1'
+  if (props.account?.platform === 'video') return 'https://movoapi.top'
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
@@ -5176,6 +5176,8 @@ const handleSubmit = async () => {
         ...currentCredentials,
         base_url: newBaseUrl
       }
+
+      if (props.account.platform === 'video') newCredentials.api_protocol = 'movo_video'
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {

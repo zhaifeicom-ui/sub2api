@@ -411,7 +411,10 @@ func (s *Store) Assets(ctx context.Context, uid int64) ([]Asset, error) {
 	return out, rows.Err()
 }
 func (s *Store) PutAsset(ctx context.Context, uid int64, name, mime string, b []byte) (Asset, error) {
-	a := Asset{ID: newID("asset_"), Name: name, MIME: mime, Bytes: len(b)}
+	return s.putAsset(ctx, uid, newID("asset_"), name, mime, b)
+}
+func (s *Store) putAsset(ctx context.Context, uid int64, id, name, mime string, b []byte) (Asset, error) {
+	a := Asset{ID: id, Name: name, MIME: mime, Bytes: len(b)}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return a, e
@@ -420,6 +423,13 @@ func (s *Store) PutAsset(ctx context.Context, uid int64, name, mime string, b []
 	var u int64
 	if e = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, uid).Scan(&u); e != nil {
 		return a, e
+	}
+	var exists bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM video_studio_assets WHERE id=$1 AND user_id=$2)`, id, uid).Scan(&exists); e != nil {
+		return a, e
+	}
+	if exists {
+		return a, tx.Commit()
 	}
 	var total int64
 	if e = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(octet_length(content)),0) FROM video_studio_assets WHERE user_id=$1`, uid).Scan(&total); e != nil {
@@ -485,8 +495,8 @@ func (s *Store) Account(ctx context.Context, id int64) (string, string, error) {
 	if err = json.Unmarshal(creds, &c); err != nil {
 		return "", "", err
 	}
-	if c.Protocol != "laneai_task" {
-		return "", "", errors.New("视频上游协议未适配")
+	if _, err := Origin(c.Base, c.Protocol); err != nil {
+		return "", "", err
 	}
 	if c.Key == "" {
 		return "", "", fmt.Errorf("上游账号没有 API Key")

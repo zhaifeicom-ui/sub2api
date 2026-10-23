@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { initialChannel, videoAPI, videoStatus, type VideoChannel, type VideoModel, type VideoTask } from '@/api/videoStudio'
+import { markUpVideoModel, initialChannel, videoAPI, videoStatus, type VideoChannel, type VideoModel, type VideoTask } from '@/api/videoStudio'
 const props = defineProps<{ groupId?: number }>()
 const emit = defineEmits<{ saved: [] }>()
 const channels = ref<VideoChannel[]>([])
@@ -9,6 +9,14 @@ const reviews = ref<VideoTask[]>([])
 const choices = ref<{ groups: { id: number; name: string }[]; accounts: { id: number; name: string }[] }>({ groups: [], accounts: [] })
 const busy = ref(false)
 const message = ref('')
+const cnyPerCredit = ref<number | null>(null)
+function applyMarkup() {
+ try {
+  const models = form.value.models.map(m => m.disabled ? m : markUpVideoModel(m, Number(cnyPerCredit.value)))
+  form.value.models = models
+  message.value = '已按实际成本加价20%，售价保留两位小数。保存后才生效。'
+ } catch (e) { message.value = errText(e) }
+}
 const resolutions = ['480p', '720p', '768p', '1080p', '2k', '4k']
 const errText = (e: unknown) => e instanceof Error ? e.message : String((e as { message?: string })?.message || '操作失败')
 function edit(c: VideoChannel) { form.value = JSON.parse(JSON.stringify(c)) }
@@ -25,14 +33,9 @@ async function importModels() {
  busy.value = true
  try {
   const incoming = await videoAPI.importCatalog(form.value.account_id)
-  const old = new Map(form.value.models.map(m => [m.id, m]))
-  form.value.models = incoming.map(m => {
-   const prev = old.get(m.id)
-   if (prev?.mode === m.mode) { for (const r of Object.keys(m.rates)) if (prev.rates[r] !== undefined) m.rates[r] = prev.rates[r]!; m.rules = prev.rules }
-   return m
-  })
+  form.value.models = incoming
   form.value.enabled = false
-  message.value = '已读取此密钥可用的视频模型与人民币成本，尚未保存。已有相同计费单位的售价和高级规则保留（高级规则成本需手动核对）；新模型售价暂按成本填入。请核对利润、价格规则后保存并开启渠道。'
+  message.value = '已读取模型。Movo 仅返回已核实规格，价格为 0，必须手动核对实际分组成本和售价。仅接入 H3 和 SD 2.5，SD 2.0 不接入。尚未保存或开放，请核对价格与规则后开启。'
  } catch (e) { message.value = errText(e) } finally { busy.value = false }
 }
 function addModel() {
@@ -62,25 +65,31 @@ onMounted(async () => { await load(); const existing = channels.value.find(c => 
 <template>
  <section class="studio-settings">
   <header><h2>视频渠道与售价</h2><button type="button" @click="reset">新增视频渠道</button></header>
-  <p>在账号管理选择“视频 · LaneAI 异步任务”，创建视频余额分组。保存此配置时会绑定所选账号。这里填写最终站内余额售价，不额外叠加聊天分组倍率。上游成本以人民币单独记录。</p>
+  <p>在账号管理创建“视频”API Key 账号，支持 Movo，创建视频余额分组。保存此配置时会绑定所选账号。这里填写最终站内余额售价，不额外叠加聊天分组倍率。上游成本以人民币单独记录。</p>
   <div class="channel-tabs"><button type="button" v-for="c in channels" :key="c.group_id" @click="edit(c)">{{ choices.groups.find(g => g.id === c.group_id)?.name || `分组 #${c.group_id}` }} · {{ c.enabled ? '开放' : '关闭' }}</button></div>
   <div class="config-grid">
    <label>视频余额分组<select v-model.number="form.group_id" :disabled="!!props.groupId"><option :value="0">请选择视频分组</option><option v-for="g in choices.groups" :key="g.id" :value="g.id">{{ g.name }}</option></select></label>
    <label>视频上游账号<select v-model.number="form.account_id"><option :value="0">请选择视频上游账号</option><option v-for="a in choices.accounts" :key="a.id" :value="a.id">{{ a.name }}</option></select></label>
-   <label>上游协议<select disabled><option>LaneAI 异步任务 · laneai_task</option></select></label>
+   <label>上游协议<span>Movo · /v1/videos</span></label>
    <label>本站公网地址（参考素材用）<input v-model="form.public_base_url" placeholder="https://你的站点" /></label>
    <label>上游最大并发<input v-model.number="form.max_concurrent" type="number" min="1" max="8" /></label>
   </div>
-  <div class="channel-tabs"><button type="button" :disabled="busy" @click="importModels">读取上游模型与成本（不发起生成）</button><button type="button" @click="addModel">手动添加模型</button></div>
+  <div class="channel-tabs"><button type="button" :disabled="busy" @click="importModels">读取上游模型（不发起生成）</button><button type="button" @click="addModel">手动添加模型</button></div>
+  <div class="config-grid"><label>每1站内额度对应人民币（按本站实际充值换算）<input v-model.number="cnyPerCredit" type="number" min="0.000001" step="any" placeholder="请填写实际换算值" /></label><button type="button" @click="applyMarkup">按成本加价20%计算售价（两位小数）</button></div>
   <label><input v-model="form.enabled" type="checkbox" /> 核对售价后，开放此视频分组</label>
   <article v-for="(m, i) in form.models" :key="i">
    <header><h3>{{ m.label || m.id }}</h3><button type="button" @click="form.models.splice(i, 1)">移除模型</button></header>
+   <p v-if="m.notes">{{ m.notes }}</p>
+   <label><input v-model="m.disabled" type="checkbox" /> 暂停此模型（不对用户展示或售卖）</label>
    <div class="config-grid">
     <label>准确调用名<input v-model="m.id" /></label><label>显示名<input v-model="m.label" /></label>
     <label>收费单位<select v-model="m.mode"><option value="second">按秒</option><option value="job">按条（每次任务）</option></select></label>
     <label>最短秒数<input v-model.number="m.min_seconds" type="number" min="1" max="600" /></label><label>最长秒数<input v-model.number="m.max_seconds" type="number" min="1" max="600" /></label>
-    <label>最多参考图<input v-model.number="m.max_images" type="number" min="0" max="9" /></label><label>最多参考视频<input v-model.number="m.max_videos" type="number" min="0" max="3" /></label><label>最多参考音频<input v-model.number="m.max_audios" type="number" min="0" max="3" /></label>
+    <label>最多参考图<input v-model.number="m.max_images" type="number" min="0" max="30" /></label><label>最多参考视频<input v-model.number="m.max_videos" type="number" min="0" max="10" /></label><label>最多参考音频<input v-model.number="m.max_audios" type="number" min="0" max="10" /></label>
    </div>
+   <label>提示词上限<input v-model.number="m.max_prompt_chars" type="number" min="1" max="16000" placeholder="默认 7000" /></label>
+   <label>参考素材总数上限<input v-model.number="m.max_references" type="number" min="0" max="50" placeholder="0 表示仅按各类型限制" /></label>
+   <label><input v-model="m.adaptive" type="checkbox" /> 支持自适应画幅</label>
    <label><input v-model="m.audio" type="checkbox" /> 支持生成声音</label>
    <div class="channel-tabs"><label v-for="r in resolutions" :key="r"><input type="checkbox" :checked="m.rates[r] !== undefined" @change="setResolution(m, r, $event)" /> {{ r }}</label></div>
    <div class="config-grid"><template v-for="(_, resolution) in m.rates" :key="resolution">

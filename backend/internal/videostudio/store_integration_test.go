@@ -47,7 +47,7 @@ func integrationStore(t *testing.T) *Store {
  CREATE TABLE account_groups(account_id bigint,group_id bigint,PRIMARY KEY(account_id,group_id));
  CREATE TABLE api_keys(id bigint PRIMARY KEY,user_id bigint,group_id bigint,status text DEFAULT 'active',deleted_at timestamptz,expires_at timestamptz,quota numeric DEFAULT 0,quota_used numeric DEFAULT 0,rate_limit_5h numeric DEFAULT 0,rate_limit_1d numeric DEFAULT 0,rate_limit_7d numeric DEFAULT 0,usage_5h numeric DEFAULT 0,usage_1d numeric DEFAULT 0,usage_7d numeric DEFAULT 0,window_5h_start timestamptz,window_1d_start timestamptz,window_7d_start timestamptz);
  INSERT INTO users(id,balance) VALUES(1,100),(2,100);INSERT INTO groups(id) VALUES(1);
- INSERT INTO accounts(id,credentials) VALUES(1,'{"base_url":"https://laneai.dev/v1","api_key":"test-only","api_protocol":"laneai_task"}');INSERT INTO account_groups VALUES(1,1);
+ INSERT INTO accounts(id,credentials) VALUES(1,'{"base_url":"https://movoapi.top/v1","api_key":"test-only","api_protocol":"movo_video"}');INSERT INTO account_groups VALUES(1,1);
  INSERT INTO api_keys(id,user_id,group_id) VALUES(1,1,1),(2,2,1);`)
 	if e != nil {
 		t.Fatal(e)
@@ -188,7 +188,7 @@ func TestWorkerRecoveryAndContract(t *testing.T) {
 				t.Errorf("invalid payload %v", e)
 			}
 		} else {
-			text = `{"id":"upstream_1","status":"completed","outputs":["https://example.com/out.mp4"]}`
+			text = `{"id":"upstream_1","status":"completed","metadata":{"url":"https://example.com/out.mp4"}}`
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(text)), Header: make(http.Header)}, nil
 	})

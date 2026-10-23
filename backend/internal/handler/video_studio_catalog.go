@@ -72,6 +72,9 @@ func (h *VideoStudioHandler) keyModels(c *gin.Context) ([]videostudio.Model, err
 	}
 	out := []videostudio.Model{}
 	for _, m := range ch.Models {
+		if m.Disabled {
+			continue
+		}
 		if k.Group.ModelAllowlist.Enabled && !k.Group.ModelAllowlist.Allows(m.ID) {
 			continue
 		}
@@ -98,17 +101,17 @@ func (h *VideoStudioHandler) Skills(c *gin.Context) {
 		return
 	}
 	videoReply(c, gin.H{
-		"object": "skills", "protocol": "sub2api.video.tasks.v1", "upstream_adapter": "laneai_task", "models": models,
+		"object": "skills", "protocol": "sub2api.video.tasks.v1", "upstream_adapter": videostudio.MovoProtocol, "models": models,
 		"auth":           "Authorization: Bearer YOUR_STATION_KEY",
 		"endpoints":      gin.H{"models": "GET /v1/models", "quote": "POST /v1/videos/quote", "submit": "POST /v1/task/submit", "query": "GET /v1/task/{id}", "upload": "POST /v1/video/assets (multipart/form-data, field=file)", "assets": "GET /v1/video/assets"},
 		"submit_headers": gin.H{"Idempotency-Key": "Required, 8–120 characters. Reuse only for retrying the exact same request."},
 		"example":        gin.H{"model": "USE_MODEL_ID_FROM_MODELS", "input": gin.H{"prompt": "Describe the scene", "duration": 4, "resolution": "768p", "aspect_ratio": "16:9", "generate_audio": false}},
-		"input_schema":   gin.H{"prompt": "1–7000 characters", "duration": "Integer seconds within the chosen model limits", "resolution": "One of the keys in the model rates map", "aspect_ratio": []string{"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}, "generate_audio": "Boolean; requires model.audio", "images": "Array of owned asset IDs, not remote URLs", "videos": "Array of owned asset IDs", "audios": "Array of owned asset IDs"},
-		"result":         "Submit returns a station id. Poll GET /v1/task/{id} every 5–15 seconds; completed outputs is an array of upstream HTTPS video URLs.",
+		"input_schema":   gin.H{"prompt": "1 to model.max_prompt_chars characters (default 7000)", "duration": "Integer seconds within the chosen model limits", "resolution": "One of the keys in the model rates map", "aspect_ratio": []string{"16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"}, "generate_audio": "Boolean; SD supports audio control; H3 audio is determined upstream", "adaptive_condition": "Requires model.adaptive; H3 also requires image/video references", "facs": "Optional boolean, SD 2.5 only; default true", "images": "Array of owned asset IDs, not remote URLs", "videos": "Array of owned asset IDs", "audios": "Array of owned asset IDs"},
+		"result":         "Submit returns a station id. Poll GET /v1/task/{id} every 5–15 seconds; completed outputs is an array of HTTPS video URLs (public upstream links or station-stored outputs).",
 		"statuses":       []string{"pending", "submitting", "queued", "in_progress", "completed", "failed", "needs_review"},
 		"billing":        "Final wallet prices, no chat/group multiplier. Quote first; optional expected_amount protects against price changes. Failed tasks refund. needs_review holds funds pending reconciliation. Script planning uses a separate chat key.",
 		"errors":         gin.H{"400": "Invalid input or no matching tariff", "402": "Insufficient balance/quota", "404": "Task not found or not owned by this key", "409": "Idempotency conflict", "500": "Service unavailable"},
-		"compatibility":  "Not OpenAI Videos or MiniMax official API. LaneAI task request shape, station-specific IDs, asset IDs and idempotency semantics.",
+		"compatibility":  "Not OpenAI Videos or MiniMax official API. Station task request shape, station-specific IDs, asset IDs and idempotency semantics. Movo is adapted server-side.",
 		"retention":      "Video outputs are upstream links and may expire. Download promptly; no automatic clip stitching.",
 	}, nil)
 }

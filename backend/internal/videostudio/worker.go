@@ -96,20 +96,18 @@ func (w *Worker) claim(ctx context.Context) (string, error) {
 	}
 	return id, tx.Commit()
 }
-func laneOrigin(raw string) (string, error) {
-	u, e := url.Parse(raw)
-	if e != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || (u.Host != "laneai.dev" && u.Host != "www.laneai.dev") {
-		return "", errors.New("LaneAI 视频账号 Base URL 必须为 https://laneai.dev 或其 /v1 地址")
-	}
-	return u.Scheme + "://" + u.Host, nil
-}
 
 type upstreamResponse struct {
-	ID      string   `json:"id"`
-	TaskID  string   `json:"task_id"`
-	Status  string   `json:"status"`
-	Outputs []string `json:"outputs"`
-	Result  struct {
+	ID         string   `json:"id"`
+	TaskID     string   `json:"task_id"`
+	Status     string   `json:"status"`
+	Outputs    []string `json:"outputs"`
+	ContentURL string   `json:"content_url"`
+	URL        string   `json:"url"`
+	Metadata   struct {
+		URL string `json:"url"`
+	} `json:"metadata"`
+	Result struct {
 		URL string `json:"url"`
 	} `json:"result"`
 	Error struct {
@@ -167,7 +165,7 @@ func (w *Worker) process(ctx context.Context, id string) {
 		w.deferTask(ctx, t, "上游账号暂不可用")
 		return
 	}
-	base, e := laneOrigin(raw)
+	base, e := videoOrigin(raw)
 	if e != nil {
 		w.deferTask(ctx, t, e.Error())
 		return
@@ -199,8 +197,9 @@ func (w *Worker) process(ctx context.Context, id string) {
 			w.fail(ctx, t, e.Error())
 			return
 		}
-		payload := laneTaskPayload(t.Request.Model, input, imgs, vids, audio)
-		out, status, e := w.call(ctx, base, key, http.MethodPost, "/v1/task/submit", payload)
+		payload := movoPayload(t.Request.Model, input, imgs, vids, audio)
+		submitPath := "/v1/videos"
+		out, status, e := w.call(ctx, base, key, http.MethodPost, submitPath, payload)
 		// Only an explicit 4xx rejection (except timeout/conflict) proves no job was accepted.
 		if status >= 400 && status < 500 && status != 408 && status != 409 {
 			w.fail(ctx, t, "上游拒绝任务："+safeMessage(out.Error.Message, status))
@@ -231,7 +230,8 @@ func (w *Worker) process(ctx context.Context, id string) {
 		w.review(id, "任务超过 24 小时仍未完成，请管理员核对上游；冻结金额暂不释放")
 		return
 	}
-	out, status, e := w.call(ctx, base, key, http.MethodGet, "/v1/task/"+url.PathEscape(t.UpstreamID), nil)
+	queryPath := "/v1/videos/" + url.PathEscape(t.UpstreamID)
+	out, status, e := w.call(ctx, base, key, http.MethodGet, queryPath, nil)
 	if e != nil || status != 200 {
 		w.deferTask(ctx, t, "上游查询暂时失败，稍后继续")
 		return
@@ -239,6 +239,13 @@ func (w *Worker) process(ctx context.Context, id string) {
 	switch out.Status {
 	case "completed":
 		outputs := out.Outputs
+		if isMovo(base) {
+			outputs, e = w.movoOutput(ctx, base, key, t.UpstreamID, out, &t)
+			if e != nil {
+				w.review(id, e.Error())
+				return
+			}
+		}
 		if len(outputs) == 0 && out.Result.URL != "" {
 			outputs = []string{out.Result.URL}
 		}
@@ -259,6 +266,12 @@ func (w *Worker) process(ctx context.Context, id string) {
 		}
 	case "failed":
 		w.fail(ctx, t, safeMessage(out.Error.Message, 0))
+	case "unknown":
+		if isMovo(base) {
+			w.deferTask(ctx, t, "上游正在同步任务状态，继续查询")
+			return
+		}
+		w.review(id, "未知上游任务状态，需要核对："+out.Status)
 	case "queued", "in_progress":
 		_, e = w.Store.DB.ExecContext(ctx, `UPDATE video_studio_tasks SET status=$2,error_message='',poll_after=now()+interval '20 seconds',updated_at=now() WHERE id=$1 AND NOT settled`, id, out.Status)
 		if e != nil {
@@ -269,51 +282,10 @@ func (w *Worker) process(ctx context.Context, id string) {
 	}
 }
 
-// LaneAI's endpoint accepts these reference URL objects under its internal
-// materials, video_references, and audio_references input fields.
-type laneMaterialReference struct {
-	URL string `json:"url"`
-}
-
-func laneReferences(urls []string) []laneMaterialReference {
-	refs := make([]laneMaterialReference, 0, len(urls))
-	for _, raw := range urls {
-		refs = append(refs, laneMaterialReference{URL: raw})
-	}
-	return refs
-}
-
-func laneTaskPayload(model string, input Input, images, videos, audios []string) map[string]any {
-	upstreamInput := map[string]any{
-		"prompt": input.Prompt, "duration": input.Duration,
-		"resolution": strings.ToLower(input.Resolution), "aspect_ratio": input.AspectRatio,
-		"generate_audio": input.GenerateAudio,
-	}
-	// The public /v1/task/submit contract accepts image and video URLs in the
-	// documented images/videos arrays. Audio references use the backend's
-	// MaterialReference type and must be sent under audio_references.
-	if len(images) > 0 {
-		upstreamInput["images"] = append([]string{}, images...)
-	}
-	if len(videos) > 0 {
-		upstreamInput["videos"] = append([]string{}, videos...)
-	}
-	if len(audios) > 0 {
-		upstreamInput["audio_references"] = laneReferences(audios)
-	}
-	return map[string]any{"model": model, "input": upstreamInput}
-}
-
 func secureOutputURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Hostname() == "" || u.User != nil {
 		return "", errors.New("invalid upstream media URL")
-	}
-	// LaneAI currently returns signed media links using http://laneai.dev, while
-	// the exact same signed URL is served over HTTPS. Upgrade only that known
-	// provider host; never accept arbitrary insecure output links.
-	if u.Scheme == "http" && strings.EqualFold(u.Hostname(), "laneai.dev") && u.Port() == "" {
-		u.Scheme = "https"
 	}
 	if u.Scheme != "https" {
 		return "", errors.New("upstream media URL must use HTTPS")

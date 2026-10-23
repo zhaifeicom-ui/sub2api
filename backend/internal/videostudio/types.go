@@ -1,4 +1,4 @@
-// Package videostudio implements LaneAI video tasks and the durable workbench.
+// Package videostudio implements Movo video tasks and the durable workbench.
 package videostudio
 
 import (
@@ -17,18 +17,24 @@ var ErrConflict = errors.New("内容已更新或幂等键冲突，请刷新后�
 var ErrFunds = errors.New("余额或密钥额度不足")
 
 type Model struct {
-	Rules      []Tariff           `json:"rules,omitempty"`
-	ID         string             `json:"id"`
-	Label      string             `json:"label"`
-	Mode       string             `json:"mode"` // second or job; prices in station balance units
-	Rates      map[string]float64 `json:"rates"`
-	CostCNY    map[string]float64 `json:"cost_cny,omitempty"`
-	MinSeconds int                `json:"min_seconds"`
-	MaxSeconds int                `json:"max_seconds"`
-	MaxImages  int                `json:"max_images"`
-	MaxVideos  int                `json:"max_videos"`
-	MaxAudios  int                `json:"max_audios"`
-	Audio      bool               `json:"audio"`
+	Adaptive       bool               `json:"adaptive,omitempty"`
+	Disabled       bool               `json:"disabled,omitempty"`
+	SpecConfirmed  bool               `json:"spec_confirmed,omitempty"`
+	Notes          string             `json:"notes,omitempty"`
+	MaxReferences  int                `json:"max_references,omitempty"`
+	MaxPromptChars int                `json:"max_prompt_chars,omitempty"`
+	Rules          []Tariff           `json:"rules,omitempty"`
+	ID             string             `json:"id"`
+	Label          string             `json:"label"`
+	Mode           string             `json:"mode"` // second or job; prices in station balance units
+	Rates          map[string]float64 `json:"rates"`
+	CostCNY        map[string]float64 `json:"cost_cny,omitempty"`
+	MinSeconds     int                `json:"min_seconds"`
+	MaxSeconds     int                `json:"max_seconds"`
+	MaxImages      int                `json:"max_images"`
+	MaxVideos      int                `json:"max_videos"`
+	MaxAudios      int                `json:"max_audios"`
+	Audio          bool               `json:"audio"`
 }
 type Channel struct {
 	GroupID       int64   `json:"group_id"`
@@ -40,6 +46,7 @@ type Channel struct {
 	// Prices are final station-wallet prices. No hidden group or FX multiplier.
 }
 type Input struct {
+	FACS          *bool    `json:"facs,omitempty"`
 	Prompt        string   `json:"prompt"`
 	Duration      int      `json:"duration"`
 	Resolution    string   `json:"resolution"`
@@ -97,6 +104,7 @@ type Shot struct {
 	TaskID     string   `json:"task_id"`
 }
 type ProjectOutput struct {
+	FACS          *bool  `json:"facs,omitempty"`
 	KeyID         int64  `json:"key_id"`
 	Model         string `json:"model"`
 	Resolution    string `json:"resolution"`
@@ -141,10 +149,19 @@ func (c Channel) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, m := range c.Models {
-		if strings.TrimSpace(m.ID) == "" || seen[m.ID] || (m.Mode != "second" && m.Mode != "job") || m.MinSeconds < 1 || m.MaxSeconds < m.MinSeconds || m.MaxSeconds > 600 || m.MaxImages < 0 || m.MaxImages > 9 || m.MaxVideos < 0 || m.MaxVideos > 3 || m.MaxAudios < 0 || m.MaxAudios > 3 || len(m.Rates) == 0 || len(m.Rules) > 100 {
-			return errors.New("模型配置不合法")
+		if strings.TrimSpace(m.ID) == "" || seen[m.ID] {
+			return errors.New("模型 ID 为空或重复")
 		}
 		seen[m.ID] = true
+		if m.Disabled {
+			continue
+		}
+		if m.MaxPromptChars < 0 || m.MaxPromptChars > 16000 || m.MaxReferences < 0 || m.MaxReferences > 50 {
+			return errors.New("模型提示词或素材总数上限不合法")
+		}
+		if (m.Mode != "second" && m.Mode != "job") || m.MinSeconds < 1 || m.MaxSeconds < m.MinSeconds || m.MaxSeconds > 600 || m.MaxImages < 0 || m.MaxImages > 30 || m.MaxVideos < 0 || m.MaxVideos > 10 || m.MaxAudios < 0 || m.MaxAudios > 10 || len(m.Rates) == 0 || len(m.Rules) > 100 {
+			return errors.New("模型配置不合法")
+		}
 		for i, a := range m.Rules {
 			for _, b := range m.Rules[:i] {
 				if a.Resolution == b.Resolution && a.MinSeconds <= b.MaxSeconds && b.MinSeconds <= a.MaxSeconds && (a.Audio == "any" || b.Audio == "any" || a.Audio == b.Audio) && (a.Reference == "any" || b.Reference == "any" || a.Reference == b.Reference) {
@@ -172,12 +189,22 @@ func (c Channel) Validate() error {
 func Quote(c Channel, r Request) (Price, error) {
 	for _, m := range c.Models {
 		if m.ID == r.Model {
+			if m.Disabled {
+				return Price{}, errors.New("此模型规格尚未确认或已暂停")
+			}
+			if m.MaxReferences > 0 && len(r.Input.Images)+len(r.Input.Videos)+len(r.Input.Audios) > m.MaxReferences {
+				return Price{}, errors.New("参考素材总数量超过模型上限")
+			}
 			p, ok := m.Rates[strings.ToLower(r.Input.Resolution)]
 			if !ok || r.Input.Duration < m.MinSeconds || r.Input.Duration > m.MaxSeconds {
 				return Price{}, errors.New("此模型不支持所选时长或清晰度")
 			}
-			if n := len([]rune(strings.TrimSpace(r.Input.Prompt))); n == 0 || n > 7000 {
-				return Price{}, errors.New("提示词须为 1–7000 字")
+			maxPrompt := m.MaxPromptChars
+			if maxPrompt == 0 {
+				maxPrompt = 7000
+			}
+			if n := len([]rune(strings.TrimSpace(r.Input.Prompt))); n == 0 || n > maxPrompt {
+				return Price{}, fmt.Errorf("提示词须为 1–%d 字", maxPrompt)
 			}
 			if len(r.Input.Images) > m.MaxImages || len(r.Input.Videos) > m.MaxVideos || len(r.Input.Audios) > m.MaxAudios {
 				return Price{}, errors.New("参考素材数量超过模型上限")
@@ -186,6 +213,10 @@ func Quote(c Channel, r Request) (Price, error) {
 				return Price{}, errors.New("此模型不支持声音")
 			}
 			switch r.Input.AspectRatio {
+			case "adaptive":
+				if !m.Adaptive || (m.ID == "MiniMax-H3" && len(r.Input.Images)+len(r.Input.Videos) == 0) {
+					return Price{}, errors.New("此模型的自适应画幅需要视觉参考素材或尚未开放")
+				}
 			case "16:9", "9:16", "1:1", "4:3", "3:4", "21:9":
 			default:
 				return Price{}, errors.New("请选择有效画面比例")
@@ -216,7 +247,7 @@ func validateDocument(d Document) error {
 	}
 	seen := map[string]bool{}
 	for _, s := range d.Shots {
-		if s.ID == "" || seen[s.ID] || s.Duration < 1 || s.Duration > 600 || len([]rune(s.Prompt)) > 7000 || len(s.Images) > 9 || len(s.Videos) > 3 || len(s.Audios) > 3 {
+		if s.ID == "" || seen[s.ID] || s.Duration < 1 || s.Duration > 600 || len([]rune(s.Prompt)) > 16000 || len(s.Images) > 30 || len(s.Videos) > 10 || len(s.Audios) > 10 {
 			return errors.New("镜头 ID、时长或提示词不合法")
 		}
 		seen[s.ID] = true

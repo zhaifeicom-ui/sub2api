@@ -39,3 +39,28 @@ func TestAssetReferenceTypeAndOwner(t *testing.T) {
 		})
 	}
 }
+
+func TestGeneratedOutputStoredOnce(t *testing.T) {
+	for _, exists := range []bool{false, true} {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT id FROM users").WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+		mock.ExpectQuery("SELECT EXISTS").WithArgs("asset_result_test", int64(1)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(exists))
+		if !exists {
+			mock.ExpectQuery("SELECT COALESCE").WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(0))
+			mock.ExpectExec("INSERT INTO video_studio_assets").WithArgs("asset_result_test", int64(1), "result.mp4", "video/mp4", []byte("test")).WillReturnResult(sqlmock.NewResult(1, 1))
+		}
+		mock.ExpectCommit()
+		_, err = (&Store{DB: db}).putAsset(context.Background(), 1, "asset_result_test", "result.mp4", "video/mp4", []byte("test"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+		_ = db.Close()
+	}
+}

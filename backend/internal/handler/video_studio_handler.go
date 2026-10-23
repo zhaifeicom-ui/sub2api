@@ -118,6 +118,9 @@ func (h *VideoStudioHandler) Options(c *gin.Context) {
 			return
 		}
 		for _, m := range ch.Models {
+			if m.Disabled {
+				continue
+			}
 			if key.Group != nil && key.Group.ModelAllowlist.Enabled && !key.Group.ModelAllowlist.Allows(m.ID) {
 				continue
 			}
@@ -329,10 +332,18 @@ func (h *VideoStudioHandler) SaveSettings(c *gin.Context) {
 		videoReply(c, nil, e)
 		return
 	}
-	if raw != "https://laneai.dev" && raw != "https://laneai.dev/" && raw != "https://laneai.dev/v1" && raw != "https://laneai.dev/v1/" {
-		videoReply(c, nil, errors.New("请选择 LaneAI 上游账号"))
+	_, err := videostudio.VideoOrigin(raw)
+	if err != nil {
+		videoReply(c, nil, err)
 		return
 	}
+	for _, m := range ch.Models {
+		if err := videostudio.ValidateMovoModel(m); err != nil {
+			videoReply(c, nil, err)
+			return
+		}
+	}
+
 	e = h.store.SaveChannel(c.Request.Context(), ch)
 	videoReply(c, true, e)
 }

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import VideoApiDocs from '@/components/video/VideoApiDocs.vue'
 import VideoStudioSettings from '@/components/video/VideoStudioSettings.vue'
-import { parseVideoProject, shotInput, videoInputError } from '@/api/videoStudioInputs'
+import { parseVideoProject, shotInput, videoInputError, videoReferenceError } from '@/api/videoStudioInputs'
 import { useAuthStore } from '@/stores/auth'
 import { list as listKeys } from '@/api/keys'
 import type { ApiKey } from '@/types'
@@ -14,7 +14,7 @@ const mode = ref<'single' | 'story' | 'settings' | 'docs'>('single')
 const options = ref<VideoOption[]>([])
 const keyID = ref(0)
 const modelID = ref('')
-const input = ref<VideoInput>({ prompt: '', duration: 5, resolution: '768p', aspect_ratio: '16:9', images: [], videos: [], audios: [], generate_audio: false })
+const input = ref<VideoInput>({ prompt: '', duration: 5, resolution: '768p', aspect_ratio: '16:9', images: [], videos: [], audios: [], generate_audio: false, facs: true })
 const tasks = ref<VideoTask[]>([])
 const olderTasks = ref<VideoTask[]>([])
 const filter = ref('all')
@@ -51,7 +51,7 @@ let stopped = false
 let polling = false
 const draftKey = computed(() => `sub2api-video-draft:${auth.user?.id}`)
 const chosen = computed(() => options.value.find(o => o.key_id === keyID.value))
-const models = computed(() => chosen.value?.models || [])
+const models = computed(() => (chosen.value?.models || []).filter(m => !m.disabled))
 const model = computed(() => models.value.find(m => m.id === modelID.value))
 const resolutions = computed(() => Object.keys(model.value?.rates || {}))
 const shot = computed(() => project.value.document.shots.find(s => s.id === selectedShot.value))
@@ -64,7 +64,7 @@ const singleError = computed(() => videoInputError(model.value, input.value))
 const shotError = (s: VideoShot) => videoInputError(model.value, shotInput(input.value, s, project.value.document.character_images))
 const canSubmit = computed(() => !!model.value && !!input.value.prompt.trim() && !busy.value && !batchBusy.value)
 const errText = (e: unknown) => String((e as { message?: string })?.message || '操作失败，请稍后重试')
-const money = (n: number) => `$${Number(n || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
+const money = (n: number) => `$${Number(n || 0).toFixed(2)}`
 const state = (t?: VideoTask) => t ? videoStatus[t.status] || t.status : '未生成'
 const assetURL = videoAPI.assetURL
 const safeURL = (s: string) => { try { return new URL(s).protocol === 'https:' ? s : '' } catch { return '' } }
@@ -76,18 +76,19 @@ function normalizeModel() {
   if (!resolutions.value.includes(input.value.resolution)) input.value.resolution = resolutions.value[0] || ''
   input.value.duration = Math.max(m.min_seconds, Math.min(m.max_seconds, input.value.duration))
   if (!m.audio) input.value.generate_audio = false
+  if (!m.adaptive && input.value.aspect_ratio === 'adaptive') input.value.aspect_ratio = '16:9'
 }
 watch([keyID, modelID, options], normalizeModel)
-function outputSettings() { return { key_id: keyID.value, model: modelID.value, resolution: input.value.resolution, aspect_ratio: input.value.aspect_ratio, generate_audio: input.value.generate_audio } }
+function outputSettings() { return { key_id: keyID.value, model: modelID.value, resolution: input.value.resolution, aspect_ratio: input.value.aspect_ratio, generate_audio: input.value.generate_audio, facs: input.value.facs } }
 function restoreOutput() {
   const output = project.value.document.output
   if (!output) return
   if (options.value.some(o => o.key_id === output.key_id)) keyID.value = output.key_id
   modelID.value = output.model
-  input.value.resolution = output.resolution; input.value.aspect_ratio = output.aspect_ratio; input.value.generate_audio = output.generate_audio
+  input.value.resolution = output.resolution; input.value.aspect_ratio = output.aspect_ratio; input.value.generate_audio = output.generate_audio; input.value.facs = output.facs ?? true
   normalizeModel()
 }
-watch([keyID, modelID, () => input.value.resolution, () => input.value.aspect_ratio, () => input.value.generate_audio], () => {
+watch([keyID, modelID, () => input.value.resolution, () => input.value.aspect_ratio, () => input.value.generate_audio, () => input.value.facs], () => {
   if (!ignoreChanges && mode.value === 'story') project.value.document.output = outputSettings()
 })
 watch(project, () => {
@@ -189,17 +190,39 @@ async function confirmSubmit() {
 function openLibrary(target: typeof libraryTarget.value) { libraryTarget.value = target; showLibrary.value = true }
 function chooseAsset(a: VideoAsset) {
   const target = libraryTarget.value
-  if (target === 'characters') { if (!a.mime.startsWith('image/')) return; if (project.value.document.character_images.length >= 5) { message.value = '角色参考最多 5 张'; return } if (!project.value.document.character_images.includes(a.id)) project.value.document.character_images.push(a.id) }
-  else if (target === 'first') { if (!a.mime.startsWith('image/') || !shot.value) return; shot.value.first_frame = a.id }
-  else {
+  const check = (candidate: Pick<VideoInput, 'images' | 'videos' | 'audios'>) => {
+    const error = videoReferenceError(model.value, candidate)
+    if (error) message.value = error
+    return !error
+  }
+  if (target === 'characters') {
+    if (!a.mime.startsWith('image/')) return
+    if (project.value.document.character_images.includes(a.id)) { showLibrary.value = false; return }
+    if (project.value.document.character_images.length >= 5) { message.value = '角色参考最多5张，计入每个镜头的参考图总数'; return }
+    const characters = [...project.value.document.character_images, a.id]
+    const shots = project.value.document.shots
+    if (shots.some(s => !check(shotInput(input.value, s, characters)))) return
+    if (!shots.length && !check({ images: characters, videos: [], audios: [] })) return
+    project.value.document.character_images = characters
+  } else if (target === 'first') {
+    if (!a.mime.startsWith('image/') || !shot.value) return
+    if (!check(shotInput(input.value, { ...shot.value, first_frame: a.id }, project.value.document.character_images))) return
+    shot.value.first_frame = a.id
+  } else {
     const targetInput = mode.value === 'story' && shot.value ? shot.value : input.value
-    targetInput.images ||= []; targetInput.videos ||= []; targetInput.audios ||= []
-    const list = a.mime.startsWith('image/') ? targetInput.images : a.mime.startsWith('video/') ? targetInput.videos : targetInput.audios
-    const max = a.mime.startsWith('image/') ? model.value?.max_images : a.mime.startsWith('video/') ? model.value?.max_videos : model.value?.max_audios
-    if (list.length >= (max || 0)) { message.value = '已达到模型参考素材上限'; return } if (!list.includes(a.id)) list.push(a.id)
+    const field = a.mime.startsWith('image/') ? 'images' : a.mime.startsWith('video/') ? 'videos' : 'audios'
+    const list = targetInput[field] || []
+    if (list.includes(a.id)) { showLibrary.value = false; return }
+    const candidate = { ...targetInput, [field]: [...list, a.id] }
+    const actual = mode.value === 'story' && shot.value
+      ? shotInput(input.value, candidate as VideoShot, project.value.document.character_images)
+      : candidate as VideoInput
+    if (!check(actual)) return
+    targetInput[field] = [...list, a.id]
   }
   showLibrary.value = false
 }
+
 async function upload(event: Event) {
   const el = event.target as HTMLInputElement; const file = el.files?.[0]; if (!file) return
   if (file.size > 30 * 1024 * 1024) { message.value = '单个素材不能超过 30MB'; return }
@@ -265,7 +288,9 @@ onBeforeUnmount(() => { stopped = true; if (poll) clearInterval(poll); if (autos
           <label>视频模型<select v-model="modelID"><option v-if="!models.length" value="">请选择分组</option><option v-for="m in models" :key="m.id" :value="m.id">{{ m.label || m.id }}</option></select></label>
           <div class="model-price" v-if="model && !model.rules?.length"><span>{{ model.mode === 'job' ? '按条计费' : '按秒计费' }}</span><strong>{{ money(model.rates[input.resolution] || 0) }} / {{ model.mode === 'job' ? '条' : '秒' }}</strong><small>成功结算，明确失败退回冻结额</small></div><div v-else-if="model" class="model-price"><strong>按条件计费</strong><small>时长、声音与素材可能影响费用，提交前确认报价</small></div>
         </div>
-        <p v-if="model" class="hint model-limits">模型限制：{{ model.min_seconds }}～{{ model.max_seconds }} 秒 · {{ resolutions.join(' / ').toUpperCase() }} · 参考图 {{ model.max_images }} 张 / 视频 {{ model.max_videos }} 个 / 音频 {{ model.max_audios }} 个。切换模型后请核对现有素材。</p>
+        <p v-if="modelID === 'MiniMax-H3'" class="hint">H3 的声音由上游模型决定，当前接口不提供静音开关。</p>
+        <label v-if="modelID === 'seedance2.5-yx-stable'"><input v-model="input.facs" type="checkbox" /> FACS 参考图片预处理（不额外收费，仅普通参考图）</label>
+        <p v-if="model" class="hint model-limits">模型限制：{{ model.min_seconds }}～{{ model.max_seconds }} 秒 · {{ resolutions.join(' / ').toUpperCase() }} · 参考图 {{ model.max_images }} 张 / 视频 {{ model.max_videos }} 个 / 音频 {{ model.max_audios }} 个<span v-if="model.max_references"> · 三类素材合计最多 {{ model.max_references }} 个</span>。切换模型后请核对现有素材。</p>
         <div class="workspace" :class="{ 'with-history': historyOpen, story: mode === 'story' }">
           <aside v-if="mode === 'story'" class="script-panel">
             <div class="panel-title"><h2>剧本</h2><button @click="newProject">＋ 新建</button></div>
@@ -281,10 +306,10 @@ onBeforeUnmount(() => { stopped = true; if (poll) clearInterval(poll); if (autos
           <main class="creation-panel">
             <div v-if="mode === 'single'" class="single-editor">
               <div class="section-heading"><h2>创作一段视频</h2><span>文字描述与参考素材，自由组合</span></div>
-              <label class="prompt-label">画面描述<textarea v-model="input.prompt" class="main-prompt" rows="6" maxlength="7000" placeholder="描述主体、动作、场景、光线与镜头运动。越具体，画面越接近你的想象。" /></label>
+              <label class="prompt-label">画面描述<textarea v-model="input.prompt" class="main-prompt" rows="6" :maxlength="model?.max_prompt_chars || 7000" placeholder="描述主体、动作、场景、光线与镜头运动。越具体，画面越接近你的想象。" /></label>
               <div class="form-row"><label>时长 <strong>{{ input.duration }} 秒</strong><input v-model.number="input.duration" type="range" :min="model?.min_seconds || 4" :max="model?.max_seconds || 15" step="1" /><small>{{ model?.min_seconds || 4 }}–{{ model?.max_seconds || 15 }} 秒</small></label></div>
-              <div class="form-row"><label>清晰度<div class="chips"><button v-for="r in resolutions" :key="r" :class="{ selected: input.resolution === r }" @click="input.resolution = r">{{ r.toUpperCase() }}</button></div></label><label>声音<div class="chips"><button :class="{ selected: !input.generate_audio }" @click="input.generate_audio = false">无声</button><button :disabled="!model?.audio" :class="{ selected: input.generate_audio }" @click="input.generate_audio = true">有声</button></div></label></div>
-              <label>画面比例<div class="ratio-grid"><button v-for="r in ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']" :key="r" :class="{ selected: input.aspect_ratio === r }" @click="input.aspect_ratio = r"><span class="ratio-shape" :style="{ aspectRatio: r.replace(':', '/') }" />{{ r }}</button></div></label>
+              <div class="form-row"><label>清晰度<div class="chips"><button v-for="r in resolutions" :key="r" :class="{ selected: input.resolution === r }" @click="input.resolution = r">{{ r.toUpperCase() }}</button></div></label><label v-if="modelID !== 'MiniMax-H3'">声音<div class="chips"><button :class="{ selected: !input.generate_audio }" @click="input.generate_audio = false">无声</button><button :disabled="!model?.audio" :class="{ selected: input.generate_audio }" @click="input.generate_audio = true">有声</button></div></label></div>
+              <label>画面比例<div class="ratio-grid"><button v-for="r in ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', ...(model?.adaptive ? ['adaptive'] : [])]" :key="r" :class="{ selected: input.aspect_ratio === r }" @click="input.aspect_ratio = r"><span class="ratio-shape" :style="{ aspectRatio: r.replace(':', '/') }" />{{ r }}</button></div></label>
               <div class="section-heading"><h3>参考素材</h3><button @click="openLibrary('reference')">＋ 从素材库添加</button></div><p class="hint">图片 {{ input.images.length }}/{{ model?.max_images || 0 }} · 视频 {{ input.videos.length }}/{{ model?.max_videos || 0 }} · 音频 {{ input.audios.length }}/{{ model?.max_audios || 0 }}</p>
               <div class="asset-strip"><div v-for="id in input.images" :key="id" class="asset-thumb"><img :src="assetURL(id)" alt="参考图片" /><button aria-label="移除参考图" @click="input.images = input.images.filter(x => x !== id)">×</button></div><div v-for="id in [...input.videos, ...input.audios]" :key="id" class="media-chip">{{ assets.find(a => a.id === id)?.name || '媒体素材' }}<button @click="input.videos = input.videos.filter(x => x !== id); input.audios = input.audios.filter(x => x !== id)">×</button></div></div>
               <p v-if="singleError && model" class="hint" role="status">{{ singleError }}</p><footer class="generate-footer"><div><small>预计冻结</small><strong>{{ model?.rules?.length ? '以报价确认为准' : money(quote ?? estimatedSingle) }}</strong></div><button class="primary" :disabled="!canSubmit" @click="prepareSubmit()">{{ busy ? '正在报价…' : '生成视频 →' }}</button></footer>
@@ -294,8 +319,8 @@ onBeforeUnmount(() => { stopped = true; if (poll) clearInterval(poll); if (autos
               <div class="story-canvas"><div v-if="!project.document.shots.length" class="canvas-empty"><div class="empty-icon">▧</div><h3>故事从第一镜开始</h3><p>在左侧写大纲并拆分剧本，或手动添加镜头。</p><button @click="addShot">＋ 添加第一个镜头</button></div><div class="shot-cards" :style="{ zoom }">
                 <article v-for="(s, i) in project.document.shots" :key="s.id" class="shot-card" :class="{ selected: selectedShot === s.id }" @click="selectedShot = s.id">
                   <header><span class="shot-number">{{ String(i + 1).padStart(2, '0') }}</span><strong>{{ s.title }}</strong><span class="status" :class="taskForShot(s)?.status">{{ state(taskForShot(s)) }}</span></header>
-                  <div class="shot-preview"><video v-if="taskForShot(s)?.outputs?.[0]" :src="safeURL(taskForShot(s)!.outputs![0]!)" controls preload="metadata" /><img v-else-if="s.first_frame" :src="assetURL(s.first_frame)" alt="首帧" /><span v-else>镜头 {{ i + 1 }} · {{ s.duration }}s</span></div>
-                  <textarea v-model="s.prompt" rows="4" maxlength="7000" aria-label="镜头提示词" placeholder="描述这一镜的画面与动作" />
+                  <div class="shot-preview"><video v-if="taskForShot(s)?.outputs?.[0]" :src="safeURL(taskForShot(s)!.outputs![0]!)" controls preload="metadata" /><img v-else-if="s.first_frame" :src="assetURL(s.first_frame)" alt="构图参考" /><span v-else>镜头 {{ i + 1 }} · {{ s.duration }}s</span></div>
+                  <textarea v-model="s.prompt" rows="4" :maxlength="model?.max_prompt_chars || 7000" aria-label="镜头提示词" placeholder="描述这一镜的画面与动作" />
                   <div class="shot-card-bottom"><input v-model.number="s.duration" type="number" :min="model?.min_seconds || 4" :max="model?.max_seconds || 15" aria-label="镜头时长" /><span>秒</span><button aria-label="上移镜头" @click.stop="moveShot(i, -1)">↑</button><button aria-label="下移镜头" @click.stop="moveShot(i, 1)">↓</button><button aria-label="删除镜头" @click.stop="removeShot(s)">删除</button></div>
                   <p v-if="shotError(s)" class="task-error">{{ shotError(s) }}</p><p v-if="taskForShot(s)?.error" class="task-error">{{ taskForShot(s)?.error }}</p>
                   <button class="primary full" :disabled="busy || batchBusy || !s.prompt.trim() || (!!taskForShot(s) && !taskForShot(s)?.settled)" @click.stop="prepareSubmit([s])">{{ taskForShot(s)?.settled ? '重新生成' : '生成这一镜' }}</button>
@@ -306,16 +331,16 @@ onBeforeUnmount(() => { stopped = true; if (poll) clearInterval(poll); if (autos
           </main>
           <aside v-if="mode === 'story'" class="assets-panel">
             <div class="panel-title"><h2>资产与细节</h2><span>跨镜头复用</span></div>
-            <h3>全剧角色参考</h3><p class="hint">这些参考图会随每个镜头一起提交，帮助保持角色一致。</p><div class="asset-strip"><div v-for="id in project.document.character_images" :key="id" class="asset-thumb"><img :src="assetURL(id)" alt="角色参考" /><button @click="project.document.character_images = project.document.character_images.filter(x => x !== id)">×</button></div></div><button class="full dashed" @click="openLibrary('characters')">＋ 添加角色参考</button>
-            <template v-if="shot"><p class="hint">本镜实际参考：图片 {{ shotInput(input, shot, project.document.character_images).images.length }}/{{ model?.max_images || 0 }} · 视频 {{ shot.videos?.length || 0 }}/{{ model?.max_videos || 0 }} · 音频 {{ shot.audios?.length || 0 }}/{{ model?.max_audios || 0 }}</p><h3>本镜首帧</h3><img v-if="shot.first_frame" class="first-frame" :src="assetURL(shot.first_frame)" alt="本镜首帧" /><div class="split-buttons"><button @click="openLibrary('first')">选择首帧</button><button v-if="shot.first_frame" @click="shot.first_frame = ''">移除</button></div><label>镜头名称<input v-model="shot.title" maxlength="120" /></label><label>运镜<input v-model="shot.camera" placeholder="例如：缓慢推进、固定机位" /></label><label>对白<textarea v-model="shot.dialogue" rows="2" /></label><label>声音<textarea v-model="shot.sound" rows="2" /></label><button class="full dashed" @click="openLibrary('reference')">添加本镜参考素材</button><div class="asset-strip"><div v-for="id in shot.images" :key="id" class="asset-thumb"><img :src="assetURL(id)" alt="镜头参考" /><button @click="shot.images = shot.images.filter(x => x !== id)">×</button></div></div><div v-for="kind in (['videos', 'audios'] as const)" :key="kind" class="asset-strip"><div v-for="id in shot[kind] || []" :key="id" class="media-chip">{{ assets.find(a => a.id === id)?.name || (kind === 'videos' ? '参考视频' : '参考音频') }}<button @click="shot[kind] = shot[kind]?.filter(x => x !== id)">×</button></div></div></template>
-            <h3>全剧输出设置</h3><label>清晰度<select v-model="input.resolution"><option v-for="r in resolutions" :key="r" :value="r">{{ r.toUpperCase() }}</option></select></label><label>画幅<select v-model="input.aspect_ratio"><option v-for="r in ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']" :key="r">{{ r }}</option></select></label><label><input v-model="input.generate_audio" type="checkbox" :disabled="!model?.audio" /> 生成声音</label>
+            <h3>全剧角色参考</h3><p class="hint">最多5张，会随每个镜头提交，并计入该镜头的参考图和素材总数。</p><div class="asset-strip"><div v-for="id in project.document.character_images" :key="id" class="asset-thumb"><img :src="assetURL(id)" alt="角色参考" /><button @click="project.document.character_images = project.document.character_images.filter(x => x !== id)">×</button></div></div><button class="full dashed" @click="openLibrary('characters')">＋ 添加角色参考</button>
+            <template v-if="shot"><p class="hint">本镜实际参考：图片 {{ shotInput(input, shot, project.document.character_images).images.length }}/{{ model?.max_images || 0 }} · 视频 {{ shot.videos?.length || 0 }}/{{ model?.max_videos || 0 }} · 音频 {{ shot.audios?.length || 0 }}/{{ model?.max_audios || 0 }}</p><h3>本镜构图参考</h3><p class="hint">作为普通参考图提交，不是强制首帧；计入参考图总数。</p><img v-if="shot.first_frame" class="first-frame" :src="assetURL(shot.first_frame)" alt="本镜构图参考" /><div class="split-buttons"><button @click="openLibrary('first')">选择构图参考</button><button v-if="shot.first_frame" @click="shot.first_frame = ''">移除</button></div><label>镜头名称<input v-model="shot.title" maxlength="120" /></label><label>运镜<input v-model="shot.camera" placeholder="例如：缓慢推进、固定机位" /></label><label>对白<textarea v-model="shot.dialogue" rows="2" /></label><label>声音<textarea v-model="shot.sound" rows="2" /></label><button class="full dashed" @click="openLibrary('reference')">添加本镜参考素材</button><div class="asset-strip"><div v-for="id in shot.images" :key="id" class="asset-thumb"><img :src="assetURL(id)" alt="镜头参考" /><button @click="shot.images = shot.images.filter(x => x !== id)">×</button></div></div><div v-for="kind in (['videos', 'audios'] as const)" :key="kind" class="asset-strip"><div v-for="id in shot[kind] || []" :key="id" class="media-chip">{{ assets.find(a => a.id === id)?.name || (kind === 'videos' ? '参考视频' : '参考音频') }}<button @click="shot[kind] = shot[kind]?.filter(x => x !== id)">×</button></div></div></template>
+            <h3>全剧输出设置</h3><label>清晰度<select v-model="input.resolution"><option v-for="r in resolutions" :key="r" :value="r">{{ r.toUpperCase() }}</option></select></label><label>画幅<select v-model="input.aspect_ratio"><option v-for="r in ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', ...(model?.adaptive ? ['adaptive'] : [])]" :key="r">{{ r }}</option></select></label><label v-if="modelID !== 'MiniMax-H3'"><input v-model="input.generate_audio" type="checkbox" :disabled="!model?.audio" /> 生成声音</label>
             <h3>成片 · {{ completedShots.length }} 镜</h3><p class="hint">点击播放或下载各镜头；导出剧本可同时保存视频地址。</p><button v-for="x in completedShots" :key="x.shot.id" class="finished-shot" @click="preview = x.task || null">▶ {{ x.shot.title }}</button><button v-if="completedShots.length" class="full" @click="exportProject">导出剧本与成片清单</button>
           </aside>
           <aside v-if="historyOpen" class="history-panel"><div class="panel-title"><h2>历史记录</h2><span>{{ allTasks.length }}</span></div><div class="history-tabs"><button v-for="f in [{ id: 'all', label: '全部' }, { id: 'running', label: '进行中' }, { id: 'completed', label: '完成' }, { id: 'failed', label: '失败' }]" :key="f.id" :class="{ selected: filter === f.id }" @click="filter = f.id">{{ f.label }}</button></div><p v-if="!visibleTasks.length" class="hint">这里会保存你的视频生成记录。</p><article v-for="t in visibleTasks" :key="t.id" class="history-card"><header><strong>{{ t.request.model }}</strong><span class="status" :class="t.status">{{ state(t) }}</span></header><small>{{ new Date(t.created_at).toLocaleString() }} · {{ t.request.input.duration }}s · {{ t.request.input.resolution }}</small><p>{{ t.request.input.prompt }}</p><video v-if="t.outputs?.[0]" :src="safeURL(t.outputs[0])" controls preload="metadata" /><p v-if="t.error" class="task-error">{{ t.error }}</p><footer><span>{{ t.settled ? `实扣 ${money(t.cost)}` : `冻结 ${money(t.hold)}` }}</span><button v-if="t.status === 'pending'" @click="cancelTask(t)">取消排队</button><button v-if="t.status === 'completed'" @click="preview = t">查看 / 下载</button></footer></article><button v-if="allTasks.length >= 50" class="full" @click="moreHistory">加载更早记录</button></aside>
         </div>
       </template>
       <div v-if="confirming" class="modal-backdrop" @click.self="confirming = null"><section class="studio-modal" role="dialog" aria-modal="true" aria-label="确认视频费用"><h2>确认生成</h2><p>即将提交 {{ confirming.requests.length }} 个视频任务，冻结站内余额 <strong>{{ money(confirming.total) }}</strong>。</p><p>成功后结算，明确失败退回；上游结果不确定时保留冻结并由管理员核对。生成期间请勿重复提交。</p><div class="modal-actions"><button @click="confirming = null">返回修改</button><button class="primary" @click="confirmSubmit">确认费用并生成</button></div></section></div>
-      <div v-if="showLibrary" class="modal-backdrop" @click.self="showLibrary = false"><section class="studio-modal library-modal" role="dialog" aria-modal="true" aria-label="素材库"><header class="panel-title"><h2>我的素材库</h2><button @click="showLibrary = false">关闭</button></header><p class="hint">角色 / 首帧请选择图片；文件保存在本站，不依赖容易过期的外部图片地址。单文件 30MB，个人总量 200MB。</p><label class="file-button primary">{{ uploading ? '上传中…' : '＋ 上传素材' }}<input :disabled="uploading" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg" @change="upload" /></label><div class="library-grid"><article v-for="a in libraryAssets" :key="a.id"><button class="library-select" @click="chooseAsset(a)"><img v-if="a.mime.startsWith('image/')" :src="assetURL(a.id)" :alt="a.name" /><span v-else>{{ a.mime.startsWith('video/') ? '▶ 视频' : '♫ 音频' }}</span><small>{{ a.name }}</small></button><button @click="deleteAsset(a)">删除</button></article></div><p v-if="!libraryAssets.length" class="empty-state">暂无符合类型的素材，请先上传。</p></section></div>
+      <div v-if="showLibrary" class="modal-backdrop" @click.self="showLibrary = false"><section class="studio-modal library-modal" role="dialog" aria-modal="true" aria-label="素材库"><header class="panel-title"><h2>我的素材库</h2><button @click="showLibrary = false">关闭</button></header><p class="hint">角色 / 构图参考请选择图片；文件保存在本站，不依赖容易过期的外部图片地址。单文件 30MB，个人总量 200MB。</p><label class="file-button primary">{{ uploading ? '上传中…' : '＋ 上传素材' }}<input :disabled="uploading" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg" @change="upload" /></label><div class="library-grid"><article v-for="a in libraryAssets" :key="a.id"><button class="library-select" @click="chooseAsset(a)"><img v-if="a.mime.startsWith('image/')" :src="assetURL(a.id)" :alt="a.name" /><span v-else>{{ a.mime.startsWith('video/') ? '▶ 视频' : '♫ 音频' }}</span><small>{{ a.name }}</small></button><button @click="deleteAsset(a)">删除</button></article></div><p v-if="!libraryAssets.length" class="empty-state">暂无符合类型的素材，请先上传。</p></section></div>
       <div v-if="preview" class="modal-backdrop" @click.self="preview = null"><section class="studio-modal preview-modal" role="dialog" aria-modal="true" aria-label="视频预览"><header class="panel-title"><h2>{{ preview.request.model }}</h2><button @click="preview = null">关闭</button></header><video v-if="preview.outputs?.[0]" :src="safeURL(preview.outputs[0])" controls autoplay /><p>{{ preview.request.input.prompt }}</p><a v-for="(url, i) in preview.outputs" :key="url" :href="safeURL(url)" target="_blank" rel="noopener noreferrer" class="primary file-button">打开 / 下载视频 {{ i + 1 }}</a><small>视频由上游外链提供，链接可能过期，请及时下载保存。若浏览器直接播放，可在播放器菜单选择下载。</small></section></div>
     </div>
   </AppLayout>

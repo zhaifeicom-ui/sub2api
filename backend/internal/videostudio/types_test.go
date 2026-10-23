@@ -3,6 +3,7 @@ package videostudio
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -16,7 +17,7 @@ func testChannel() Channel {
 func testRequest() Request {
 	return Request{KeyID: 1, Model: "MiniMax-H3", Input: Input{Prompt: "一只猫在花园散步", Duration: 4, Resolution: "768p", AspectRatio: "16:9"}}
 }
-func TestLanePricingAndCapabilities(t *testing.T) {
+func TestPricingAndCapabilities(t *testing.T) {
 	c := testChannel()
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
@@ -54,114 +55,86 @@ func TestLanePricingAndCapabilities(t *testing.T) {
 		t.Fatal("long prompt accepted")
 	}
 }
-func TestLaneOriginRejectsCredentialLeaks(t *testing.T) {
-	for _, s := range []string{"http://laneai.dev", "https://laneai.dev.evil.test/v1", "https://laneai.dev@evil.test", "https://127.0.0.1", "https://laneai.dev:443"} {
-		if _, e := laneOrigin(s); e == nil {
-			t.Fatalf("accepted %s", s)
-		}
-	}
-	for _, s := range []string{"https://laneai.dev", "https://laneai.dev/v1"} {
-		if got, e := laneOrigin(s); e != nil || got != "https://laneai.dev" {
-			t.Fatalf("%s %v", got, e)
-		}
-	}
-}
 
 type transportFunc func(*http.Request) (*http.Response, error)
 
 func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func TestLaneTaskContractUsesNestedInput(t *testing.T) {
-	w := NewWorker(nil)
-	w.Client.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/v1/task/submit" || r.Header.Get("Authorization") != "Bearer test" {
-			t.Fatalf("wrong request %v", r.URL)
+func TestMovoOrigin(t *testing.T) {
+	for _, raw := range []string{"http://movoapi.top", "https://movoapi.top.evil.test", "https://movoapi.top@evil.test", "https://movoapi.top:443", "https://laneai.dev", "https://movoapi.top?key=x"} {
+		if _, err := Origin(raw, MovoProtocol); err == nil {
+			t.Fatalf("accepted %s", raw)
 		}
-		var p map[string]json.RawMessage
-		if e := json.NewDecoder(r.Body).Decode(&p); e != nil {
-			t.Fatal(e)
-		}
-		if _, ok := p["input"]; !ok {
-			t.Fatal("input envelope missing")
-		}
-		return &http.Response{StatusCode: 202, Body: io.NopCloser(strings.NewReader(`{"id":"task_a","status":"queued"}`)), Header: make(http.Header)}, nil
-	})
-	out, status, e := w.call(context.Background(), "https://laneai.dev", "test", "POST", "/v1/task/submit", map[string]any{"model": "MiniMax-H3", "input": testRequest().Input})
-	if e != nil || status != 202 || out.ID != "task_a" {
-		t.Fatalf("%+v %d %v", out, status, e)
+	}
+	if base, err := Origin("https://movoapi.top/v1", MovoProtocol); err != nil || base != "https://movoapi.top" {
+		t.Fatal(base, err)
 	}
 }
-
-func TestLaneTaskMaterialContract(t *testing.T) {
-	for _, model := range []string{"MiniMax-H3", "MiniMax-H3 768P", "MiniMax-H3 2K"} {
+func TestMovoPayloads(t *testing.T) {
+	for _, model := range []string{"MiniMax-H3", "seedance2.5-yx-stable"} {
 		t.Run(model, func(t *testing.T) {
-			b, err := json.Marshal(laneTaskPayload(model, testRequest().Input, []string{"https://station.example/image"}, []string{"https://station.example/video"}, []string{"https://station.example/audio"}))
-			if err != nil {
-				t.Fatal(err)
+			p := movoPayload(model, testRequest().Input, []string{"https://station/image"}, []string{"https://station/video"}, []string{"https://station/audio"})
+			if _, exists := p["input"]; exists {
+				t.Fatal("obsolete envelope")
 			}
-			var p struct {
-				Model string                     `json:"model"`
-				Input map[string]json.RawMessage `json:"input"`
-			}
-			if err := json.Unmarshal(b, &p); err != nil {
-				t.Fatal(err)
-			}
-			if p.Model != model {
-				t.Fatal("model changed")
-			}
-			for field, kind := range map[string]string{"audio_references": "audio"} {
-				var refs []laneMaterialReference
-				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
-					t.Fatalf("%s must use MaterialReference objects: %v", field, err)
+			if model == "MiniMax-H3" {
+				if p["seconds"] != "4" || p["size"] != "1344x768" {
+					t.Fatal(p)
 				}
-				if len(refs) != 1 || refs[0].URL != "https://station.example/"+kind {
-					t.Fatalf("wrong %s: %+v", field, refs)
+				content := p["metadata"].(map[string]any)["content"].([]map[string]any)
+				for i, kind := range []string{"image", "video", "audio"} {
+					if content[i]["role"] != "reference_"+kind || content[i][kind+"_url"].(map[string]string)["url"] != "https://station/"+kind {
+						t.Fatal(content)
+					}
 				}
-			}
-			for field, kind := range map[string]string{"images": "image", "videos": "video"} {
-				var refs []string
-				if err := json.Unmarshal(p.Input[field], &refs); err != nil {
-					t.Fatalf("%s must use URL strings: %v", field, err)
+			} else {
+				if p["seconds"] != 4 || len(p["reference_images"].([]string)) != 1 {
+					t.Fatal(p)
 				}
-				if len(refs) != 1 || refs[0] != "https://station.example/"+kind {
-					t.Fatalf("wrong %s: %+v", field, refs)
-				}
-			}
-			for _, field := range []string{"materials", "video_references", "audios"} {
-				if _, ok := p.Input[field]; ok {
-					t.Fatalf("undocumented field %s must not be sent", field)
+				if model == "seedance2.5-yx-stable" && p["facs"] != true {
+					t.Fatal("missing FACS default")
 				}
 			}
 		})
 	}
-	b, err := json.Marshal(laneTaskPayload("MiniMax-H3", testRequest().Input, nil, nil, nil))
-	if err != nil {
-		t.Fatal(err)
+	off := false
+	in := testRequest().Input
+	in.FACS = &off
+	if movoPayload("seedance2.5-yx-stable", in, nil, nil, nil)["facs"] != false {
+		t.Fatal("FACS off ignored")
 	}
-	for _, field := range []string{"materials", "video_references", "audio_references", "images", "videos", "audios"} {
-		if strings.Contains(string(b), `"`+field+`"`) {
-			t.Fatalf("empty reference field %s must be omitted: %s", field, b)
+}
+func TestMovoTaskContract(t *testing.T) {
+	w := NewWorker(nil)
+	w.Client.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v1/videos" || r.Header.Get("Authorization") != "Bearer test" {
+			t.Fatal(r.URL)
 		}
+		var p map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			t.Fatal(err)
+		}
+		if p["seconds"] != "4" {
+			t.Fatal(p)
+		}
+		return &http.Response{StatusCode: 202, Body: io.NopCloser(strings.NewReader(`{"id":"job1","status":"queued"}`)), Header: make(http.Header)}, nil
+	})
+	out, status, err := w.call(context.Background(), "https://movoapi.top", "test", "POST", "/v1/videos", movoPayload("MiniMax-H3", testRequest().Input, nil, nil, nil))
+	if err != nil || status != 202 || out.ID != "job1" {
+		t.Fatal(out, status, err)
+	}
+}
+func TestSecureOutputURL(t *testing.T) {
+	for _, raw := range []string{"http://laneai.dev/video", "http://example.com/video", "https://user:pass@example.com/video"} {
+		if _, err := secureOutputURL(raw); err == nil {
+			t.Fatal(raw)
+		}
+	}
+	raw := "https://cdn.example.com/video?sig=a%2Bb&exp=1"
+	if got, err := secureOutputURL(raw); err != nil || got != raw {
+		t.Fatal(got, err)
 	}
 }
 
-func TestSecureOutputURLUpgradesOnlyLaneAIHTTP(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-		bad   bool
-	}{
-		{"http://laneai.dev/api/media/async/task?sig=x", "https://laneai.dev/api/media/async/task?sig=x", false},
-		{"https://fileview.site/video.mp4", "https://fileview.site/video.mp4", false},
-		{"http://example.com/video.mp4", "", true},
-		{"https://user:pass@laneai.dev/video.mp4", "", true},
-	}
-	for _, tc := range tests {
-		got, err := secureOutputURL(tc.input)
-		if (err != nil) != tc.bad || got != tc.want {
-			t.Fatalf("secureOutputURL(%q) = %q, %v; want %q, bad=%v", tc.input, got, err, tc.want, tc.bad)
-		}
-	}
-}
 func TestProjectValidation(t *testing.T) {
 	d := Document{Shots: []Shot{{ID: "one", Duration: 5}, {ID: "one", Duration: 5}}}
 	if validateDocument(d) == nil {
@@ -185,7 +158,7 @@ func TestReferenceLimitsArePerModelAndMediaType(t *testing.T) {
 	if _, err := Quote(c, r); err != nil {
 		t.Fatalf("published per-type maxima rejected: %v", err)
 	}
-	r.Input.Videos = make([]string, 4)
+	r.Input.Videos = make([]string, 11)
 	if _, err := Quote(c, r); err == nil {
 		t.Fatal("excess videos accepted")
 	}
@@ -217,8 +190,179 @@ func TestProjectPreservesPerShotMedia(t *testing.T) {
 	if err = validateDocument(restored); err != nil {
 		t.Fatal(err)
 	}
-	restored.Shots[0].Videos = make([]string, 4)
+	restored.Shots[0].Videos = make([]string, 11)
 	if validateDocument(restored) == nil {
 		t.Fatal("excess shot videos accepted")
+	}
+}
+
+func TestMovoOutputAndErrors(t *testing.T) {
+	w := NewWorker(nil)
+	var out upstreamResponse
+	if err := json.Unmarshal([]byte(`{"status":"completed","metadata":{"url":"https://cdn.example/video.mp4?sig=a%2Bb"}}`), &out); err != nil {
+		t.Fatal(err)
+	}
+	links, err := w.movoOutput(context.Background(), "https://movoapi.top", "secret", "job", out, nil)
+	if err != nil || len(links) != 1 || links[0] != "https://cdn.example/video.mp4?sig=a%2Bb" {
+		t.Fatal(links, err)
+	}
+	for _, body := range []string{`{"message":"bad params"}`, `{"error":{"message":"bad params"}}`} {
+		var reply upstreamResponse
+		if err := json.Unmarshal([]byte(body), &reply); err != nil || reply.Error.Message != "bad params" {
+			t.Fatal(reply, err)
+		}
+	}
+}
+func TestMovoContentRedirectNeverForwardsKey(t *testing.T) {
+	for _, location := range []string{"https://cdn.example/video.mp4?sig=a%2Bb", "https://movoapi.top/v1/videos/job/content", "http://cdn.example/video"} {
+		t.Run(location, func(t *testing.T) {
+			w := NewWorker(nil)
+			calls := 0
+			w.Client.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if r.URL.Host != "movoapi.top" || r.Header.Get("Authorization") != "Bearer secret" {
+					t.Fatal("credential destination")
+				}
+				return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{location}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+			})
+			urls, err := w.movoOutput(context.Background(), "https://movoapi.top", "secret", "job", upstreamResponse{}, nil)
+			if calls != 1 {
+				t.Fatal("followed redirect")
+			}
+			if strings.HasPrefix(location, "https://cdn.example/") {
+				if err != nil || len(urls) != 1 || urls[0] != location {
+					t.Fatal(urls, err)
+				}
+			} else if err == nil {
+				t.Fatal("unsafe redirect accepted")
+			}
+		})
+	}
+}
+func TestMovoCapabilitiesRequireConfirmedCost(t *testing.T) {
+	models := movoModels(map[string]bool{"MiniMax-H3": true, "seedance2.5-yx-stable": true})
+	for _, m := range models {
+		for res := range m.Rates {
+			m.Rates[res] = 1
+			m.CostCNY[res] = .5
+		}
+		if err := ValidateMovoModel(m); err != nil {
+			t.Fatal(err)
+		}
+		if m.ID == "MiniMax-H3" {
+			in := testRequest()
+			in.Input.Images = make([]string, 9)
+			in.Input.Videos = make([]string, 3)
+			in.Input.Audios = []string{"extra"}
+			if _, err := Quote(Channel{Models: []Model{m}}, in); err == nil {
+				t.Fatal("13 references accepted")
+			}
+		}
+	}
+}
+
+func TestMovoReferenceBoundaries(t *testing.T) {
+	for _, m := range movoModels(map[string]bool{"MiniMax-H3": true, "seedance2.5-yx-stable": true, "seedance-2.0": true}) {
+		t.Run(m.ID, func(t *testing.T) {
+			m.Disabled = false
+			m.SpecConfirmed = true
+			res := ""
+			for r := range m.Rates {
+				m.Rates[r] = 1
+				m.CostCNY[r] = .5
+				res = r
+			}
+			if err := ValidateMovoModel(m); err != nil {
+				t.Fatal(err)
+			}
+			for _, kind := range []string{"image", "video", "audio"} {
+				max := m.MaxImages
+				if kind == "video" {
+					max = m.MaxVideos
+				}
+				if kind == "audio" {
+					max = m.MaxAudios
+				}
+				for _, count := range []int{max, max + 1} {
+					r := testRequest()
+					r.Model = m.ID
+					r.Input.Duration = m.MinSeconds
+					r.Input.Resolution = res
+					refs := make([]string, count)
+					for i := range refs {
+						refs[i] = "asset_test"
+					}
+					switch kind {
+					case "image":
+						r.Input.Images = refs
+					case "video":
+						r.Input.Videos = refs
+					case "audio":
+						r.Input.Audios = refs
+					}
+					_, err := Quote(Channel{Models: []Model{m}}, r)
+					if (err != nil) != (count > max) {
+						t.Fatalf("%s count=%d max=%d err=%v", kind, count, max, err)
+					}
+				}
+			}
+			if m.ID == "seedance-2.0" {
+				m.MaxImages = 10
+				if ValidateMovoModel(m) == nil {
+					t.Fatal("SD2 allowed 10 images")
+				}
+			}
+		})
+	}
+}
+
+func TestMovoPayloadReferenceCounts(t *testing.T) {
+	refs := func(n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = fmt.Sprintf("https://station.example/asset-%d", i)
+		}
+		return out
+	}
+	for _, model := range []string{"MiniMax-H3", "seedance2.5-yx-stable"} {
+		t.Run(model, func(t *testing.T) {
+			ni, nv, na := 9, 0, 0
+			if model == "MiniMax-H3" {
+				nv = 2
+				na = 1
+			}
+			if model == "seedance2.5-yx-stable" {
+				ni = 30
+				nv = 10
+				na = 10
+			}
+			p := movoPayload(model, testRequest().Input, refs(ni), refs(nv), refs(na))
+			if model == "MiniMax-H3" {
+				items := p["metadata"].(map[string]any)["content"].([]map[string]any)
+				counts := map[string]int{}
+				for _, item := range items {
+					counts[item["type"].(string)]++
+				}
+				if counts["image_url"] != ni || counts["video_url"] != nv || counts["audio_url"] != na {
+					t.Fatal(counts)
+				}
+			} else {
+				for _, field := range []struct {
+					name  string
+					count int
+				}{{"reference_images", ni}, {"videos", nv}, {"audios", na}} {
+					if field.count == 0 {
+						if _, exists := p[field.name]; exists {
+							t.Fatal("empty field", field.name)
+						}
+						continue
+					}
+					urls := p[field.name].([]string)
+					if len(urls) != field.count || urls[len(urls)-1] != fmt.Sprintf("https://station.example/asset-%d", field.count-1) {
+						t.Fatal(field.name, urls)
+					}
+				}
+			}
+		})
 	}
 }

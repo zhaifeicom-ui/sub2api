@@ -1358,7 +1358,7 @@
         </div>
       </div>
 
-      <div v-if="form.platform === 'video'" class="rounded-lg bg-cyan-50 p-4 text-sm text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">视频上游协议：LaneAI 异步任务（laneai_task）。目前支持 laneai.dev；模型能力和按秒／按条售价在视频渠道中配置。不会调用聊天接口。</div>
+      <div v-if="form.platform === 'video'" class="rounded-lg bg-cyan-50 p-4 text-sm text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">视频账号使用 Movo（movo_video）协议。模型能力和最终售价在视频渠道中配置。更换上游请新建账号，旧任务保留历史账单。</div>
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
         <div v-if="!isMultiProtocolPlatform || apiProtocol !== 'adaptive'">
@@ -4020,7 +4020,7 @@ const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefin
 }
 
 const baseUrlHint = computed(() => {
-  if (form.platform === 'video') return '填写 LaneAI 根地址或 /v1 地址，当前支持 https://laneai.dev/v1'
+  if (form.platform === 'video') return '填写 https://movoapi.top；不要填写具体提交接口'
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
@@ -4028,7 +4028,7 @@ const baseUrlHint = computed(() => {
 })
 
 const apiKeyHint = computed(() => {
-  if (form.platform === 'video') return '填写 LaneAI 视频分组的上游密钥，仅保存在服务器端'
+  if (form.platform === 'video') return '填写所选视频上游的 API Key，仅保存在服务器端'
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
@@ -4037,7 +4037,7 @@ const apiKeyHint = computed(() => {
 
 // Base URL / API Key 占位符：国产供应商随账号类型变化。
 const apiKeyBaseUrlPlaceholder = computed(() => {
-  if (form.platform === 'video') return 'https://laneai.dev/v1'
+  if (form.platform === 'video') return 'https://movoapi.top'
   if (isMultiProtocolPlatform.value) {
     const mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
     return defaultCNBaseUrl(form.platform, mode, apiProtocol.value) || 'https://api.example.com'
@@ -4846,7 +4846,7 @@ watch(
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, mode, apiProtocol.value)
     } else {
       apiKeyBaseUrl.value =
-        newPlatform === 'video' ? 'https://laneai.dev/v1' : (newPlatform === 'openai')
+        newPlatform === 'video' ? 'https://movoapi.top' : (newPlatform === 'openai')
           ? 'https://api.openai.com'
           : newPlatform === 'gemini'
             ? 'https://generativelanguage.googleapis.com'
@@ -5787,7 +5787,7 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
-  if (form.platform === 'video') credentials.api_protocol = 'laneai_task'
+  if (form.platform === 'video') credentials.api_protocol = 'movo_video'
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
   }

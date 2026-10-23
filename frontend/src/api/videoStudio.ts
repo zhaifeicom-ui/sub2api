@@ -6,6 +6,7 @@ export interface VideoTariff {
  base_fee?: number; base_cost_cny?: number; image_fee?: number; image_cost_cny?: number; video_fee?: number; video_cost_cny?: number; audio_fee?: number; audio_cost_cny?: number
 }
 export interface VideoModel {
+  disabled?: boolean; spec_confirmed?: boolean; notes?: string; max_references?: number; max_prompt_chars?: number; adaptive?: boolean
   rules?: VideoTariff[]
   id: string; label: string; mode: 'second' | 'job'; rates: Record<string, number>
   cost_cny?: Record<string, number>; min_seconds: number; max_seconds: number
@@ -17,6 +18,7 @@ export interface VideoChannel {
 }
 export interface VideoOption { key_id: number; key_name: string; group_id: number; group_name: string; models: VideoModel[] }
 export interface VideoInput {
+  facs?: boolean
   prompt: string; duration: number; resolution: string; aspect_ratio: string
   images: string[]; videos: string[]; audios: string[]; generate_audio: boolean
 }
@@ -32,7 +34,7 @@ export interface VideoShot {
 }
 export interface VideoProject {
   id: string; revision: number; updated_at?: string
-  document: { output?: { key_id: number; model: string; resolution: string; aspect_ratio: string; generate_audio: boolean }; title: string; outline: string; character_images: string[]; shots: VideoShot[] }
+  document: { output?: { key_id: number; model: string; resolution: string; aspect_ratio: string; generate_audio: boolean; facs?: boolean }; title: string; outline: string; character_images: string[]; shots: VideoShot[] }
 }
 export interface VideoAsset { id: string; name: string; mime: string; bytes: number }
 const root = '/video-studio'
@@ -77,10 +79,27 @@ export function estimateVideo(model: VideoModel | undefined, resolution: string,
 }
 export function emptyShot(): VideoShot { return { id: crypto.randomUUID(), title: '新镜头', prompt: '', duration: 5, camera: '', dialogue: '', sound: '', first_frame: '', images: [], videos: [], audios: [], task_id: '' } }
 export function initialChannel(): VideoChannel {
-  const shared = { min_seconds: 4, max_seconds: 15, max_images: 9, max_videos: 3, max_audios: 3, audio: true }
-  return { group_id: 0, account_id: 0, enabled: false, public_base_url: window.location.origin, max_concurrent: 1, models: [
-    { ...shared, id: 'MiniMax-H3', label: 'MiniMax H3 · 按秒', mode: 'second', max_seconds: 30, max_videos: 1, max_audios: 1, rates: { '768p': 0.22, '2k': 0.35 }, cost_cny: { '768p': 0.22, '2k': 0.35 } },
-    { ...shared, min_seconds: 1, id: 'MiniMax-H3 2K', label: 'MiniMax H3 2K · 按条', mode: 'job', rates: { '2k': 2.2 }, cost_cny: { '2k': 2.2 } },
-    { ...shared, min_seconds: 1, id: 'MiniMax-H3 768P', label: 'MiniMax H3 768P · 按条', mode: 'job', rates: { '768p': 1.5 }, cost_cny: { '768p': 1.5 } }
-  ] }
+  return { group_id: 0, account_id: 0, enabled: false, public_base_url: window.location.origin, max_concurrent: 1, models: [] }
+}
+
+// Cost is CNY, whereas rates debit station credits. Conversion must be explicit.
+export function markUpVideoModel(model: VideoModel, cnyPerCredit: number): VideoModel {
+  if (!Number.isFinite(cnyPerCredit) || cnyPerCredit <= 0) throw new Error('请填写每站内额度对应的人民币金额')
+  const result: VideoModel = JSON.parse(JSON.stringify(model))
+  const price = (cost: number | undefined, optional = false) => {
+    if (optional && (cost === undefined || cost === 0)) return 0
+    if (!Number.isFinite(cost) || !cost || cost < 0) throw new Error('请先填写已确认的实际成本')
+    const sale = Math.round((cost * 1.2 / cnyPerCredit + Number.EPSILON) * 100) / 100
+    if (sale <= 0 || sale <= cost / cnyPerCredit) throw new Error('两位小数精度不足以保留利润，请调整计价单位或手动核对售价')
+    return sale
+  }
+  for (const res of Object.keys(result.rates)) result.rates[res] = price(result.cost_cny?.[res])
+  for (const rule of result.rules || []) {
+    rule.rate = price(rule.cost_cny)
+    rule.base_fee = price(rule.base_cost_cny, true)
+    rule.image_fee = price(rule.image_cost_cny, true)
+    rule.video_fee = price(rule.video_cost_cny, true)
+    rule.audio_fee = price(rule.audio_cost_cny, true)
+  }
+  return result
 }
