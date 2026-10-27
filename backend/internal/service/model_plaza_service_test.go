@@ -16,7 +16,7 @@ func newPlazaService(channels []Channel, groups []Group, pricing *PricingService
 	repo := &mockChannelRepository{
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return channels, nil },
 	}
-	return NewModelPlazaService(repo, &stubGroupRepoForAvailable{activeGroups: groups}, pricing, nil, nil)
+	return NewModelPlazaService(repo, &stubGroupRepoForAvailable{activeGroups: groups}, nil, pricing, nil, nil)
 }
 
 func plazaPricedChannel(id int64, name string, groupIDs []int64, platform string, models ...string) Channel {
@@ -326,7 +326,7 @@ func TestListPlazaGroups_RepoErrorsPropagate(t *testing.T) {
 	repo := &mockChannelRepository{
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return nil, sentinel },
 	}
-	svc := NewModelPlazaService(repo, &stubGroupRepoForAvailable{}, nil, nil, nil)
+	svc := NewModelPlazaService(repo, &stubGroupRepoForAvailable{}, nil, nil, nil, nil)
 	out, err := svc.ListGroups(context.Background())
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)
@@ -334,7 +334,7 @@ func TestListPlazaGroups_RepoErrorsPropagate(t *testing.T) {
 	svc2 := NewModelPlazaService(
 		&mockChannelRepository{listAllFn: func(ctx context.Context) ([]Channel, error) { return nil, nil }},
 		&stubGroupRepoForAvailable{listActiveErr: sentinel},
-		nil, nil, nil,
+		nil, nil, nil, nil,
 	)
 	out2, err2 := svc2.ListGroups(context.Background())
 	require.Nil(t, out2)
@@ -351,7 +351,7 @@ func newPlazaServiceWithBilling(channels []Channel, groups []Group, groupPlatfor
 	}
 	cs := NewChannelService(repo, nil, nil, nil, nil)
 	bs := NewBillingService(&config.Config{}, catalog)
-	return NewModelPlazaService(repo, &stubGroupRepoForAvailable{activeGroups: groups}, catalog, bs, NewModelPricingResolver(cs, bs))
+	return NewModelPlazaService(repo, &stubGroupRepoForAvailable{activeGroups: groups}, nil, catalog, bs, NewModelPricingResolver(cs, bs))
 }
 
 func plazaModelsByName(models []PlazaModel) map[string]PlazaModel {
@@ -504,4 +504,46 @@ func TestListGroups_TimePricingPassthrough(t *testing.T) {
 	require.InDelta(t, 0.5, m.TimePricing.Periods[0].Multiplier, 1e-12)
 	// 展示单价为标准时段价
 	require.InDelta(t, 0.28e-6, *m.Pricing.InputPrice, 1e-15)
+}
+
+type plazaAccountRepository struct {
+	AccountRepository
+	accounts []Account
+}
+
+func (r *plazaAccountRepository) ListActive(context.Context) ([]Account, error) {
+	return r.accounts, nil
+}
+
+func TestListPlazaGroups_AccountModelsWithoutChannels(t *testing.T) {
+	groups := []Group{{ID: 10, Platform: PlatformOpenAI, RateMultiplier: 0.4, ModelPricing: []ChannelModelPricing{{Models: []string{"public-model"}, BillingMode: "per_request", PerRequestPrice: testPtrFloat64(0.065)}}}, {ID: 20, Platform: PlatformGemini}}
+	svc := newPlazaService(nil, groups, nil)
+	svc.accountRepo = &plazaAccountRepository{accounts: []Account{{Platform: PlatformOpenAI, Schedulable: true, GroupIDs: []int64{10, 20}, Credentials: map[string]any{"model_mapping": map[string]any{"public-model": "private-upstream-model"}}}}}
+	out, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, 0.4, out[0].RateMultiplier)
+	require.Len(t, out[0].Models, 1)
+	require.Equal(t, "public-model", out[0].Models[0].Name)
+	require.InDelta(t, 0.065, *out[0].Models[0].Pricing.PerRequestPrice, 1e-12)
+}
+
+func TestListPlazaGroups_AccountAndChannelRespectGroupAllowlist(t *testing.T) {
+	svc := newPlazaService([]Channel{plazaPricedChannel(1, "channel", []int64{10}, PlatformOpenAI, "blocked")}, []Group{{ID: 10, Platform: PlatformOpenAI, ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"allowed"}}}}, nil)
+	svc.accountRepo = &plazaAccountRepository{accounts: []Account{{Platform: PlatformOpenAI, Schedulable: true, GroupIDs: []int64{10}, Credentials: map[string]any{"model_mapping": map[string]any{"allowed": "target", "blocked": "target"}}}}}
+	out, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 1)
+	require.Equal(t, "allowed", out[0].Models[0].Name)
+}
+
+func TestPlazaAccountModels_WildcardExpansionAndPlatformPricing(t *testing.T) {
+	acc := Account{Platform: PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-*": "target"}}}
+	names := plazaAccountModels(acc, &Group{ModelPricing: []ChannelModelPricing{{Platform: PlatformGemini, Models: []string{"gpt-foreign"}}, {Platform: PlatformOpenAI, Models: []string{"gpt-custom"}}}})
+	require.Contains(t, names, "gpt-custom")
+	require.NotContains(t, names, "gpt-foreign")
+	require.NotContains(t, names, "gpt-*")
+	require.NotContains(t, names, "target")
+	require.Greater(t, len(names), 1)
 }

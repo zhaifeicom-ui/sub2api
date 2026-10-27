@@ -59,11 +59,12 @@ type PlazaGroup struct {
 
 // ModelPlazaService 聚合模型广场数据。
 //
-// 模型枚举来自渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
+// 模型枚举来自分组绑定账号及渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
 // 查询给出（与扣费走同一条解析链与计费函数），图片/按次模型沿用渠道/分组档位价。
 type ModelPlazaService struct {
 	channelRepo    ChannelRepository
 	groupRepo      GroupRepository
+	accountRepo    AccountRepository
 	pricingService *PricingService
 	billingService *BillingService
 	resolver       *ModelPricingResolver
@@ -73,6 +74,7 @@ type ModelPlazaService struct {
 func NewModelPlazaService(
 	channelRepo ChannelRepository,
 	groupRepo GroupRepository,
+	accountRepo AccountRepository,
 	pricingService *PricingService,
 	billingService *BillingService,
 	resolver *ModelPricingResolver,
@@ -80,6 +82,7 @@ func NewModelPlazaService(
 	return &ModelPlazaService{
 		channelRepo:    channelRepo,
 		groupRepo:      groupRepo,
+		accountRepo:    accountRepo,
 		pricingService: pricingService,
 		billingService: billingService,
 		resolver:       resolver,
@@ -190,10 +193,53 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		}
 	}
 
+	// Accounts and group overrides are the primary configuration on sites that
+	// do not use channels. Read once rather than querying every group separately.
+	if s.accountRepo != nil {
+		accounts, err := s.accountRepo.ListActive(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list model plaza accounts: %w", err)
+		}
+		for i := range accounts {
+			acc := &accounts[i]
+			if !acc.Schedulable {
+				continue
+			}
+			for _, gid := range acc.GroupIDs {
+				g, ok := groupEnt[gid]
+				if !ok || (g.Platform != acc.Platform && (g.Platform != PlatformComposite || !isConcreteRequestPlatform(acc.Platform))) {
+					continue
+				}
+				for _, name := range plazaAccountModels(*acc, g) {
+					if !g.ModelAllowlist.Allows(name) {
+						continue
+					}
+					if modelIdx[gid] == nil {
+						modelIdx[gid] = make(map[modelKey]int)
+					}
+					key := modelKey{platform: acc.Platform, name: name}
+					if _, seen := modelIdx[gid][key]; seen {
+						continue
+					}
+					pg := byGroup[gid]
+					modelIdx[gid][key] = len(pg.Models)
+					pg.Models = append(pg.Models, PlazaModel{Name: name, Platform: acc.Platform})
+				}
+			}
+		}
+	}
+
 	officialMemo := make(map[string]*PlazaOfficialPricing)
 	out := make([]PlazaGroup, 0, len(order))
 	for _, gid := range order {
 		pg := byGroup[gid]
+		visibleModels := pg.Models[:0]
+		for _, m := range pg.Models {
+			if groupEnt[gid].ModelAllowlist.Allows(m.Name) {
+				visibleModels = append(visibleModels, m)
+			}
+		}
+		pg.Models = visibleModels
 		if len(pg.Models) == 0 {
 			continue
 		}
@@ -218,6 +264,45 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+// Enumerate public mapping keys, never upstream mapping targets or credentials.
+// A price override alone cannot advertise a model the account cannot serve.
+func plazaAccountModels(acc Account, g *Group) []string {
+	models := make([]string, 0)
+	mapping := acc.GetModelMapping()
+	if len(mapping) > 0 && !acc.IsOpenAIPassthroughEnabled() {
+		for name := range mapping {
+			if strings.Contains(name, "*") {
+				models = append(models, accountDefaultModelIDs(acc, acc.Platform)...)
+			}
+			models = append(models, name)
+		}
+	} else if acc.Platform == PlatformDeepseek {
+		models = append(models, deepseekServableModels...)
+	} else {
+		models = append(models, accountDefaultModelIDs(acc, acc.Platform)...)
+	}
+	for _, p := range g.ModelPricing {
+		if p.Platform != "" && p.Platform != acc.Platform {
+			continue
+		}
+		models = append(models, p.Models...)
+	}
+	if g.ModelAllowlist.Enabled {
+		models = append(models, g.ModelAllowlist.Models...)
+	}
+	out := make([]string, 0, len(models))
+	seen := make(map[string]bool)
+	for _, name := range models {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.Contains(name, "*") || seen[name] || !acc.IsModelSupported(name) {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
 }
 
 // fillDisplayPricing 把模型的展示定价换成实收口径：
