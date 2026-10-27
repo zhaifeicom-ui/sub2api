@@ -692,7 +692,7 @@ export default {
       timePricingWeekdays: '工作日',
       timePricingRateHint: '生效倍率 {rate} × 时段倍率 {multiplier}',
       paidPrice: '实付价格(折后)',
-      officialPrice: '官方价格',
+      officialPrice: '分组原价',
       rate: '折扣倍率',
       unitPerMillion: '$ / 1M token',
       perUnitRequest: '/ 次',

@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// PlazaOfficialPricing 模型广场展示用的官方参考价（USD per token），与计费同源：
-// LiteLLM → 内置兜底价卡 → 模型策略。字段为 nil 表示该项缺失（0 视为未配置）。
+// PlazaOfficialPricing 保留旧字段名，展示倍率前原价：分组配置优先，
+// 未填写字段回落目录参考价。nil 表示缺失，分组明确配置的 0 保留。
 type PlazaOfficialPricing struct {
 	InputPrice        *float64
 	OutputPrice       *float64
@@ -252,7 +252,10 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		g := groupEnt[gid]
 		for j := range pg.Models {
 			s.fillDisplayPricing(ctx, &pg.Models[j], g)
-			pg.Models[j].OfficialPricing = s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo)
+			pg.Models[j].OfficialPricing = plazaGroupReferencePricing(
+				s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo),
+				matchGroupModelPricing(g, pg.Models[j].Name), pg.Models[j].Pricing,
+			)
 		}
 		out = append(out, *pg)
 	}
@@ -452,4 +455,43 @@ func (s *ModelPlazaService) lookupOfficialPricing(ctx context.Context, modelName
 	}
 	memo[modelName] = result
 	return result
+}
+
+// plazaGroupReferencePricing keeps the legacy response field name while displaying
+// the group's pre-multiplier price. Missing fields fall back to the catalog;
+// explicit zero remains a configured price. Never mutate the shared catalog memo.
+func plazaGroupReferencePricing(catalog *PlazaOfficialPricing, configured, resolved *ChannelModelPricing) *PlazaOfficialPricing {
+	if configured == nil || (configured.BillingMode != "" && configured.BillingMode != BillingModeToken) {
+		return catalog
+	}
+	out := &PlazaOfficialPricing{}
+	if catalog != nil {
+		*out = *catalog
+	}
+	overrides := []struct {
+		dst **float64
+		src *float64
+	}{
+		{&out.InputPrice, configured.InputPrice},
+		{&out.OutputPrice, configured.OutputPrice},
+		{&out.CacheWritePrice, configured.CacheWritePrice},
+		{&out.CacheWrite1hPrice, configured.CacheWrite1hPrice},
+		{&out.CacheReadPrice, configured.CacheReadPrice},
+	}
+	for _, field := range overrides {
+		if field.src != nil {
+			fieldValue := *field.src
+			*field.dst = &fieldValue
+		}
+	}
+	// Group ladders follow the billing schedule, so catalog intervals must not
+	// hide configured flat prices or advertise a disabled context surcharge.
+	out.Intervals = nil
+	if resolved != nil {
+		out.Intervals = append([]PricingInterval(nil), resolved.Intervals...)
+	}
+	if out.InputPrice == nil && out.OutputPrice == nil && out.CacheWritePrice == nil && out.CacheWrite1hPrice == nil && out.CacheReadPrice == nil && len(out.Intervals) == 0 {
+		return nil
+	}
+	return out
 }

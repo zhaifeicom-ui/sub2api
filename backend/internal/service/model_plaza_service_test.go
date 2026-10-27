@@ -442,6 +442,9 @@ func TestListGroups_GroupTokenCardOverridesChannelPricing(t *testing.T) {
 	require.InDelta(t, 1e-6, *m.Pricing.InputPrice, 1e-15, "分组价卡优先于渠道平价")
 	require.InDelta(t, 15e-6, *m.Pricing.OutputPrice, 1e-15, "卡未配置的项回落目录价")
 	require.Empty(t, m.Pricing.Intervals)
+	require.NotNil(t, m.OfficialPricing)
+	require.InDelta(t, 1e-6, *m.OfficialPricing.InputPrice, 1e-15)
+	require.InDelta(t, 15e-6, *m.OfficialPricing.OutputPrice, 1e-15)
 }
 
 func TestListGroups_ImageModelKeepsTierSynthesisWithBilling(t *testing.T) {
@@ -546,4 +549,24 @@ func TestPlazaAccountModels_WildcardExpansionAndPlatformPricing(t *testing.T) {
 	require.NotContains(t, names, "gpt-*")
 	require.NotContains(t, names, "target")
 	require.Greater(t, len(names), 1)
+}
+
+func TestPlazaGroupReferencePricing_ConfiguredFieldsThenCatalog(t *testing.T) {
+	catalog := &PlazaOfficialPricing{InputPrice: testPtrFloat64(3e-6), OutputPrice: testPtrFloat64(15e-6), CacheReadPrice: testPtrFloat64(3e-7), Intervals: []PricingInterval{{InputPrice: testPtrFloat64(6e-6)}}}
+	configured := &ChannelModelPricing{BillingMode: BillingModeToken, InputPrice: testPtrFloat64(1e-6), CacheReadPrice: testPtrFloat64(0)}
+	got := plazaGroupReferencePricing(catalog, configured, &ChannelModelPricing{})
+	require.InDelta(t, 1e-6, *got.InputPrice, 1e-15)
+	require.InDelta(t, 15e-6, *got.OutputPrice, 1e-15)
+	require.Zero(t, *got.CacheReadPrice)
+	require.Empty(t, got.Intervals)
+	require.InDelta(t, 3e-6, *catalog.InputPrice, 1e-15)
+	require.InDelta(t, 3e-7, *catalog.CacheReadPrice, 1e-15)
+	require.Len(t, catalog.Intervals, 1)
+	require.Same(t, catalog, plazaGroupReferencePricing(catalog, nil, nil))
+	customOnly := plazaGroupReferencePricing(nil, configured, nil)
+	require.NotNil(t, customOnly)
+	require.InDelta(t, 1e-6, *customOnly.InputPrice, 1e-15)
+	require.Nil(t, customOnly.OutputPrice)
+	resolved := &ChannelModelPricing{Intervals: []PricingInterval{{InputPrice: testPtrFloat64(2e-6)}}}
+	require.InDelta(t, 2e-6, *plazaGroupReferencePricing(catalog, configured, resolved).Intervals[0].InputPrice, 1e-15)
 }

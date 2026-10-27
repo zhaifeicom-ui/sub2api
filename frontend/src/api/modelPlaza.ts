@@ -1,13 +1,13 @@
 /**
  * Model Plaza API（公开端点，可匿名访问）
- * 以分组为中心的模型价目：分组信息 + 模型渠道定价 + LiteLLM 官方参考价。
+ * 以分组为中心的模型价目：分组信息 + 实收定价 + 分组原价（未配置项回落默认价库）。
  * 带 token 请求时后端会额外返回专属分组与用户专属倍率。
  */
 
 import { apiClient } from './client'
 import type { UserPricingInterval, UserSupportedModelPricing } from './channels'
 
-/** 官方参考价（USD per token，与计费目录同源；字段缺失 = 目录未覆盖）。 */
+/** 倍率前的参考原价：分组配置优先，缺失项回落默认价库。保留旧接口字段名。 */
 export interface PlazaOfficialPricing {
   input_price: number | null
   output_price: number | null
@@ -16,7 +16,7 @@ export interface PlazaOfficialPricing {
   /** 1h 缓存写入（LiteLLM cache_creation_above_1hr），多数模型缺失。 */
   cache_write_1h_price?: number | null
   cache_read_price: number | null
-  /** 官方长上下文阶梯（多档模型才有），不受分组开关影响。 */
+  /** 多档参考价；有分组配置时沿用实际计费阶梯，否则使用目录阶梯。 */
   intervals?: UserPricingInterval[]
 }
 
