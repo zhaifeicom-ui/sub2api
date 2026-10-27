@@ -46,7 +46,7 @@ func ObserveManagedTransport(req *http.Request) {
 		return
 	}
 	path := strings.TrimRight(req.URL.Path, "/")
-	if !(strings.HasSuffix(path, "/responses") || strings.HasSuffix(path, "/chat/completions") || strings.HasSuffix(path, "/messages")) {
+	if !strings.HasSuffix(path, "/responses") && !strings.HasSuffix(path, "/chat/completions") && !strings.HasSuffix(path, "/messages") {
 		return
 	}
 	p, _ := req.Context().Value(managedTransportKey{}).(*ManagedTransportProbe)
@@ -67,7 +67,7 @@ func ObserveManagedTransport(req *http.Request) {
 		p.status = "body_unavailable"
 		return
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	const limit = 128 * 1024
 	body, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {

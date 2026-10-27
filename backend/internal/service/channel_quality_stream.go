@@ -59,7 +59,7 @@ func readChannelQualityStream(ctx context.Context, body io.Reader, mode string) 
 			code = "response_too_large"
 			return fmt.Errorf("text limit exceeded")
 		}
-		text.WriteString(value)
+		_, _ = text.WriteString(value)
 		return nil
 	}
 	readUsage := func(usage gjson.Result, responses bool) {
@@ -174,8 +174,8 @@ func readChannelQualityStream(ctx context.Context, body io.Reader, mode string) 
 			if frame.Len()+len(value) > qualityMaxResponseBytes {
 				return text.String(), input, output, "response_too_large", fmt.Errorf("event limit exceeded")
 			}
-			frame.WriteString(value)
-			frame.WriteByte('\n')
+			_, _ = frame.WriteString(value)
+			_ = frame.WriteByte('\n')
 		}
 	}
 	if err := scanner.Err(); err != nil {

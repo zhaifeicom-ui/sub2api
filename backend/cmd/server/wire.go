@@ -106,6 +106,7 @@ func provideCleanup(
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	batchImageCleanup *service.BatchImageCleanupService,
 	batchImageWorker *service.BatchImageWorkerRuntime,
+	videoStudio *handler.VideoStudioHandler,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -441,6 +442,9 @@ func provideCleanup(
 			}
 		}
 
+		if videoStudio != nil {
+			videoStudio.Stop()
+		}
 		runParallel(parallelSteps)
 		runSequential(infraSteps)
 

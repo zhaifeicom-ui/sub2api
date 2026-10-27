@@ -11,7 +11,7 @@ func (r *groupQualityRepository) WithScheduleLock(ctx context.Context, fn func(c
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var acquired bool
 	if err = tx.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(733002332)`).Scan(&acquired); err != nil {
 		return err
@@ -29,7 +29,7 @@ func (r *groupQualityRepository) ClaimDue(ctx context.Context) (*service.Quality
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(733002331)`); err != nil {
 		return nil, err
 	}

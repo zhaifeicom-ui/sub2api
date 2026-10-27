@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// PlazaOfficialPricing 模型广场展示用的官方参考价（USD per token），与计费同源：
-// LiteLLM → 内置兜底价卡 → 模型策略。字段为 nil 表示该项缺失（0 视为未配置）。
+// PlazaOfficialPricing 保留旧字段名，展示倍率前原价：分组配置优先，
+// 未填写字段回落目录参考价。nil 表示缺失，分组明确配置的 0 保留。
 type PlazaOfficialPricing struct {
 	InputPrice        *float64
 	OutputPrice       *float64
@@ -59,11 +59,12 @@ type PlazaGroup struct {
 
 // ModelPlazaService 聚合模型广场数据。
 //
-// 模型枚举来自渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
+// 模型枚举来自分组绑定账号及渠道配置；token 模型的展示单价与阶梯由 BillingService 的阶梯表
 // 查询给出（与扣费走同一条解析链与计费函数），图片/按次模型沿用渠道/分组档位价。
 type ModelPlazaService struct {
 	channelRepo    ChannelRepository
 	groupRepo      GroupRepository
+	accountRepo    AccountRepository
 	pricingService *PricingService
 	billingService *BillingService
 	resolver       *ModelPricingResolver
@@ -73,6 +74,7 @@ type ModelPlazaService struct {
 func NewModelPlazaService(
 	channelRepo ChannelRepository,
 	groupRepo GroupRepository,
+	accountRepo AccountRepository,
 	pricingService *PricingService,
 	billingService *BillingService,
 	resolver *ModelPricingResolver,
@@ -80,6 +82,7 @@ func NewModelPlazaService(
 	return &ModelPlazaService{
 		channelRepo:    channelRepo,
 		groupRepo:      groupRepo,
+		accountRepo:    accountRepo,
 		pricingService: pricingService,
 		billingService: billingService,
 		resolver:       resolver,
@@ -190,10 +193,53 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		}
 	}
 
+	// Accounts and group overrides are the primary configuration on sites that
+	// do not use channels. Read once rather than querying every group separately.
+	if s.accountRepo != nil {
+		accounts, err := s.accountRepo.ListActive(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list model plaza accounts: %w", err)
+		}
+		for i := range accounts {
+			acc := &accounts[i]
+			if !acc.Schedulable {
+				continue
+			}
+			for _, gid := range acc.GroupIDs {
+				g, ok := groupEnt[gid]
+				if !ok || (g.Platform != acc.Platform && (g.Platform != PlatformComposite || !isConcreteRequestPlatform(acc.Platform))) {
+					continue
+				}
+				for _, name := range plazaAccountModels(*acc, g) {
+					if !g.ModelAllowlist.Allows(name) {
+						continue
+					}
+					if modelIdx[gid] == nil {
+						modelIdx[gid] = make(map[modelKey]int)
+					}
+					key := modelKey{platform: acc.Platform, name: name}
+					if _, seen := modelIdx[gid][key]; seen {
+						continue
+					}
+					pg := byGroup[gid]
+					modelIdx[gid][key] = len(pg.Models)
+					pg.Models = append(pg.Models, PlazaModel{Name: name, Platform: acc.Platform})
+				}
+			}
+		}
+	}
+
 	officialMemo := make(map[string]*PlazaOfficialPricing)
 	out := make([]PlazaGroup, 0, len(order))
 	for _, gid := range order {
 		pg := byGroup[gid]
+		visibleModels := pg.Models[:0]
+		for _, m := range pg.Models {
+			if groupEnt[gid].ModelAllowlist.Allows(m.Name) {
+				visibleModels = append(visibleModels, m)
+			}
+		}
+		pg.Models = visibleModels
 		if len(pg.Models) == 0 {
 			continue
 		}
@@ -206,7 +252,10 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		g := groupEnt[gid]
 		for j := range pg.Models {
 			s.fillDisplayPricing(ctx, &pg.Models[j], g)
-			pg.Models[j].OfficialPricing = s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo)
+			pg.Models[j].OfficialPricing = plazaGroupReferencePricing(
+				s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo),
+				matchGroupModelPricing(g, pg.Models[j].Name), pg.Models[j].Pricing,
+			)
 		}
 		out = append(out, *pg)
 	}
@@ -218,6 +267,45 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+// Enumerate public mapping keys, never upstream mapping targets or credentials.
+// A price override alone cannot advertise a model the account cannot serve.
+func plazaAccountModels(acc Account, g *Group) []string {
+	models := make([]string, 0)
+	mapping := acc.GetModelMapping()
+	if len(mapping) > 0 && !acc.IsOpenAIPassthroughEnabled() {
+		for name := range mapping {
+			if strings.Contains(name, "*") {
+				models = append(models, accountDefaultModelIDs(acc, acc.Platform)...)
+			}
+			models = append(models, name)
+		}
+	} else if acc.Platform == PlatformDeepseek {
+		models = append(models, deepseekServableModels...)
+	} else {
+		models = append(models, accountDefaultModelIDs(acc, acc.Platform)...)
+	}
+	for _, p := range g.ModelPricing {
+		if p.Platform != "" && p.Platform != acc.Platform {
+			continue
+		}
+		models = append(models, p.Models...)
+	}
+	if g.ModelAllowlist.Enabled {
+		models = append(models, g.ModelAllowlist.Models...)
+	}
+	out := make([]string, 0, len(models))
+	seen := make(map[string]bool)
+	for _, name := range models {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.Contains(name, "*") || seen[name] || !acc.IsModelSupported(name) {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
 }
 
 // fillDisplayPricing 把模型的展示定价换成实收口径：
@@ -367,4 +455,43 @@ func (s *ModelPlazaService) lookupOfficialPricing(ctx context.Context, modelName
 	}
 	memo[modelName] = result
 	return result
+}
+
+// plazaGroupReferencePricing keeps the legacy response field name while displaying
+// the group's pre-multiplier price. Missing fields fall back to the catalog;
+// explicit zero remains a configured price. Never mutate the shared catalog memo.
+func plazaGroupReferencePricing(catalog *PlazaOfficialPricing, configured, resolved *ChannelModelPricing) *PlazaOfficialPricing {
+	if configured == nil || (configured.BillingMode != "" && configured.BillingMode != BillingModeToken) {
+		return catalog
+	}
+	out := &PlazaOfficialPricing{}
+	if catalog != nil {
+		*out = *catalog
+	}
+	overrides := []struct {
+		dst **float64
+		src *float64
+	}{
+		{&out.InputPrice, configured.InputPrice},
+		{&out.OutputPrice, configured.OutputPrice},
+		{&out.CacheWritePrice, configured.CacheWritePrice},
+		{&out.CacheWrite1hPrice, configured.CacheWrite1hPrice},
+		{&out.CacheReadPrice, configured.CacheReadPrice},
+	}
+	for _, field := range overrides {
+		if field.src != nil {
+			fieldValue := *field.src
+			*field.dst = &fieldValue
+		}
+	}
+	// Group ladders follow the billing schedule, so catalog intervals must not
+	// hide configured flat prices or advertise a disabled context surcharge.
+	out.Intervals = nil
+	if resolved != nil {
+		out.Intervals = append([]PricingInterval(nil), resolved.Intervals...)
+	}
+	if out.InputPrice == nil && out.OutputPrice == nil && out.CacheWritePrice == nil && out.CacheWrite1hPrice == nil && out.CacheReadPrice == nil && len(out.Intervals) == 0 {
+		return nil
+	}
+	return out
 }

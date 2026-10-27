@@ -37,7 +37,7 @@ func (r *channelQualityRepository) ListConfigs(ctx context.Context) ([]service.C
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.ChannelQualityConfig{}
 	for rows.Next() {
 		c, err := scanChannelQualityConfig(rows)
@@ -58,7 +58,7 @@ func (r *channelQualityRepository) SaveConfig(ctx context.Context, c service.Cha
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(733002331)`); err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (r *channelQualityRepository) Reserve(ctx context.Context, run *service.Cha
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(733002331)`); err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (r *channelQualityRepository) Finish(ctx context.Context, run *service.Chan
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `UPDATE channel_quality_test_runs SET status=$2,finished_at=$3,duration_ms=$4,response_length=$5,
  input_tokens=$6,output_tokens=$7,source=$8,error_code=$9,error_message=$10 WHERE id=$1 AND status='running'`,
 		run.ID, run.Status, run.FinishedAt, run.DurationMS, run.ResponseLength, run.InputTokens, run.OutputTokens, run.Source, run.ErrorCode, run.ErrorMessage); err != nil {
@@ -226,7 +226,7 @@ func (r *channelQualityRepository) ListRuns(ctx context.Context, monitorID int64
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.ChannelQualityRun{}
 	for rows.Next() {
 		run, err := scanChannelQualityRun(rows)
@@ -247,7 +247,7 @@ func (r *channelQualityRepository) WithChannelQualityScheduleLock(ctx context.Co
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var acquired bool
 	if err = tx.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(733002333)`).Scan(&acquired); err != nil {
 		return err
@@ -266,7 +266,7 @@ func (r *channelQualityRepository) ClaimChannelQualityDue(ctx context.Context) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(733002331)`); err != nil {
 		return nil, err
 	}

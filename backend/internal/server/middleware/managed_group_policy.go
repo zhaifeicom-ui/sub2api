@@ -15,7 +15,7 @@ import (
 func ManagedGroupPolicy(settings *service.SettingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := strings.TrimRight(c.Request.URL.Path, "/")
-		if c.Request.Method != "POST" || !(strings.HasSuffix(path, "/responses") || strings.HasSuffix(path, "/chat/completions") || strings.HasSuffix(path, "/messages")) {
+		if c.Request.Method != "POST" || (!strings.HasSuffix(path, "/responses") && !strings.HasSuffix(path, "/chat/completions") && !strings.HasSuffix(path, "/messages")) {
 			c.Next()
 			return
 		}

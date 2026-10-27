@@ -197,10 +197,12 @@ func ProvideHandlers(
 	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	videoStudioHandler *VideoStudioHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
+	videoStudioHandler.openAI = openaiGatewayHandler
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
@@ -224,6 +226,7 @@ func ProvideHandlers(
 		ModelPlaza:       modelPlazaHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		VideoStudio:      videoStudioHandler,
 	}
 }
 
@@ -250,6 +253,7 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 	NewModelPlazaHandler,
 	NewAsyncImageHandler,
+	NewVideoStudioHandler,
 	ProvideBatchImageHandler,
 
 	// Admin handlers

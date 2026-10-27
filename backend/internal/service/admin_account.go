@@ -18,6 +18,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/videostudio"
 )
 
 // Account management implementations
@@ -411,6 +412,11 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if input.Platform == PlatformVideo {
+		if input.Type != AccountTypeAPIKey || !validVideoCredentials(input.Credentials) {
+			return nil, errors.New("视频账号仅支持 API Key，以及地址匹配的 Movo 协议")
+		}
+	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -575,6 +581,19 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if account.Platform == PlatformVideo {
+		effectiveType := account.Type
+		if input.Type != "" {
+			effectiveType = input.Type
+		}
+		creds := account.Credentials
+		if input.Credentials != nil {
+			creds = input.Credentials
+		}
+		if effectiveType != AccountTypeAPIKey || !validVideoCredentials(creds) {
+			return nil, errors.New("视频账号仅支持 API Key，以及地址匹配的 Movo 协议")
+		}
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
@@ -1802,4 +1821,11 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 	}
 	applyAntigravityPrivacyMode(account, mode)
 	return mode
+}
+
+func validVideoCredentials(c map[string]any) bool {
+	raw, _ := c["base_url"].(string)
+	protocol, _ := c["api_protocol"].(string)
+	_, err := videostudio.Origin(raw, protocol)
+	return err == nil
 }

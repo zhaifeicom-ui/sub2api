@@ -116,14 +116,16 @@ export default {
     nameLabel: 'Name',
     namePlaceholder: 'My API Key',
     groupLabel: 'Group',
-    providerLabel: 'Provider',
+    providerLabel: 'Service category',
     providers: {
       anthropic: 'Anthropic',
       openai: 'OpenAI',
+      video: 'Video',
       domestic: 'Chinese AI',
       other: 'Other'
     },
     providerHints: {
+      video: 'Video task groups with per-second or per-job pricing',
       anthropic: 'Choose an available Anthropic / Claude group',
       openai: 'Choose an available OpenAI / GPT group',
       domestic: 'Includes DeepSeek, Kimi, Zhipu GLM and MiniMax',
@@ -686,7 +688,7 @@ export default {
       timePricingWeekdays: 'Weekdays',
       timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
       paidPrice: 'Your Price (Discounted)',
-      officialPrice: 'Official Price',
+      officialPrice: 'Group Base Price',
       rate: 'Rate',
       unitPerMillion: '$ / 1M tokens',
       perUnitRequest: '/ request',

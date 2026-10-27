@@ -17,6 +17,10 @@ func RegisterUserRoutes(
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
 ) {
+	if h.VideoStudio != nil {
+		v1.GET("/video-assets/:id", h.VideoStudio.Asset)
+		v1.HEAD("/video-assets/:id", h.VideoStudio.Asset)
+	}
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -72,6 +76,30 @@ func RegisterUserRoutes(
 			}
 		}
 
+		// Durable video workbench (panel JWT authentication).
+		if h.VideoStudio != nil {
+			vs := authenticated.Group("/video-studio")
+			vs.GET("/options", h.VideoStudio.Options)
+			vs.POST("/quote", h.VideoStudio.Quote)
+			vs.POST("/tasks", h.VideoStudio.Submit)
+			vs.POST("/tasks/batch", h.VideoStudio.SubmitBatch)
+			vs.GET("/tasks", h.VideoStudio.Tasks)
+			vs.GET("/tasks/:id", h.VideoStudio.Task)
+			vs.POST("/tasks/:id/cancel", h.VideoStudio.Cancel)
+			vs.GET("/projects", h.VideoStudio.Projects)
+			vs.PUT("/projects", h.VideoStudio.SaveProject)
+			vs.DELETE("/projects/:id", h.VideoStudio.ArchiveProject)
+			vs.POST("/plan", h.VideoStudio.Plan)
+			vs.GET("/assets", h.VideoStudio.Assets)
+			vs.POST("/assets", h.VideoStudio.Upload)
+			vs.DELETE("/assets/:id", h.VideoStudio.DeleteAsset)
+			vs.GET("/channel-choices", h.VideoStudio.ChannelChoices)
+			vs.POST("/catalog/import", h.VideoStudio.ImportCatalog)
+			vs.GET("/settings", h.VideoStudio.Settings)
+			vs.PUT("/settings", h.VideoStudio.SaveSettings)
+			vs.GET("/reviews", h.VideoStudio.Reviews)
+			vs.POST("/reviews/:id", h.VideoStudio.Reconcile)
+		}
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{

@@ -71,6 +71,10 @@ func RegisterGatewayRoutes(
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
 	modelsHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformVideo && h.VideoStudio != nil {
+			h.VideoStudio.Models(c)
+			return
+		}
 		if c.Query("client_version") != "" {
 			codexModelsHandler(c)
 			return
@@ -374,6 +378,25 @@ func RegisterGatewayRoutes(
 		rootRoute(http.MethodPost, prefix+"/contents/generations/tasks", bodyLimit, h.OpenAIGateway.SeedanceTasks)
 		rootRoute(http.MethodGet, prefix+"/contents/generations/tasks/:task_id", bodyLimit, h.OpenAIGateway.SeedanceTasks)
 		rootRoute(http.MethodDelete, prefix+"/contents/generations/tasks/:task_id", bodyLimit, h.OpenAIGateway.SeedanceTasks)
+	}
+	if h.VideoStudio != nil {
+		videoRoute := func(method, path string, limit gin.HandlerFunc, target gin.HandlerFunc) {
+			rootRoute(method, path, limit, func(c *gin.Context) {
+				if getGroupPlatform(c) != service.PlatformVideo {
+					c.JSON(400, gin.H{"message": "请使用视频分组密钥"})
+					return
+				}
+				target(c)
+			})
+		}
+		videoRoute(http.MethodGet, "/v1/skills", bodyLimit, h.VideoStudio.Skills)
+		videoRoute(http.MethodGet, "/v1/skills/guide", bodyLimit, h.VideoStudio.Skills)
+		videoRoute(http.MethodPost, "/v1/video/assets", bodyLimit, h.VideoStudio.Upload)
+		videoRoute(http.MethodGet, "/v1/video/assets", bodyLimit, h.VideoStudio.Assets)
+		videoRoute(http.MethodDelete, "/v1/video/assets/:id", bodyLimit, h.VideoStudio.DeleteAsset)
+		videoRoute(http.MethodPost, "/v1/task/submit", bodyLimit, h.VideoStudio.Submit)
+		videoRoute(http.MethodGet, "/v1/task/:id", bodyLimit, h.VideoStudio.Task)
+		videoRoute(http.MethodPost, "/v1/videos/quote", bodyLimit, h.VideoStudio.Quote)
 	}
 	rootRoute(http.MethodPost, "/responses", bodyLimit, responsesHandler)
 	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(responsesHandler))

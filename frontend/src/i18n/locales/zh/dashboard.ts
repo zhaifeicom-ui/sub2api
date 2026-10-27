@@ -116,14 +116,16 @@ export default {
     nameLabel: '名称',
     namePlaceholder: '我的 API 密钥',
     groupLabel: '分组',
-    providerLabel: '厂商',
+    providerLabel: '服务分类',
     providers: {
       anthropic: 'Anthropic',
       openai: 'OpenAI',
+      video: '视频',
       domestic: '国产模型',
       other: '其他'
     },
     providerHints: {
+      video: '视频接口专用分组，按秒或按条收费',
       anthropic: '选择 Anthropic / Claude 的可用分组',
       openai: '选择 OpenAI / GPT 的可用分组',
       domestic: '包含 DeepSeek、Kimi、智谱 GLM、MiniMax',
@@ -690,7 +692,7 @@ export default {
       timePricingWeekdays: '工作日',
       timePricingRateHint: '生效倍率 {rate} × 时段倍率 {multiplier}',
       paidPrice: '实付价格(折后)',
-      officialPrice: '官方价格',
+      officialPrice: '分组原价',
       rate: '折扣倍率',
       unitPerMillion: '$ / 1M token',
       perUnitRequest: '/ 次',
